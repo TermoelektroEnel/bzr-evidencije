@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="sr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>BZR Evidencije — Termoelektro Enel</title>
+<link rel="stylesheet" href="style.css" />
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+
+<header class="app-header">
+  <h1>BZR Evidencije</h1>
+  <button id="logout-btn" class="hidden">Odjava</button>
+</header>
+
+<main>
+
+  <!-- LOGIN -->
+  <section id="login-view" class="panel">
+    <h2>Prijava</h2>
+    <label for="login-email">Email</label>
+    <input type="email" id="login-email" autocomplete="username" />
+    <label for="login-password">Lozinka</label>
+    <input type="password" id="login-password" autocomplete="current-password" />
+    <button class="primary" id="login-btn">Prijavi se</button>
+    <div class="error-msg hidden" id="login-error"></div>
+  </section>
+
+  <!-- LISTA ZAPOSLENIH -->
+  <section id="zaposleni-view" class="panel hidden">
+    <h2>Zaposleni</h2>
+    <input type="text" id="search-input" placeholder="Pretraga po imenu ili radnom mestu..." />
+    <table id="zaposleni-table">
+      <thead>
+        <tr>
+          <th>Mat. br.</th>
+          <th>Ime i prezime</th>
+          <th>Radno mesto</th>
+          <th>Radna jedinica</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody id="zaposleni-tbody"></tbody>
+    </table>
+    <p class="info-msg" id="zaposleni-info"></p>
+  </section>
+
+  <!-- DETALJI ZAPOSLENOG -->
+  <section id="detail-view" class="panel hidden">
+    <span class="back-link" id="back-to-list">&larr; Nazad na listu</span>
+    <h2 id="detail-ime"></h2>
+    <p class="info-msg" id="detail-meta"></p>
+
+    <h3>Lekarski pregledi</h3>
+    <div id="pregledi-list"></div>
+
+    <h3>Novi lekarski pregled</h3>
+    <form id="novi-pregled-form">
+      <label for="vrsta-pregleda">Vrsta pregleda</label>
+      <select id="vrsta-pregleda" required>
+        <option value="prethodni">Prethodni</option>
+        <option value="periodicni">Periodični</option>
+        <option value="vanredni">Vanredni</option>
+      </select>
+
+      <label for="datum-pregleda">Datum pregleda</label>
+      <input type="date" id="datum-pregleda" required />
+
+      <label for="rezultat">Rezultat</label>
+      <select id="rezultat" required>
+        <option value="sposoban">Sposoban</option>
+        <option value="sposoban pod uslovima">Sposoban pod uslovima</option>
+        <option value="nesposoban">Nesposoban</option>
+      </select>
+
+      <label for="ustanova">Zdravstvena ustanova</label>
+      <input type="text" id="ustanova" />
+
+      <label for="broj-uverenja">Broj uverenja</label>
+      <input type="text" id="broj-uverenja" />
+
+      <label for="vazi-do">Važi do</label>
+      <input type="date" id="vazi-do" />
+
+      <label for="napomena">Napomena</label>
+      <textarea id="napomena"></textarea>
+
+      <button type="submit" class="primary">Sačuvaj pregled</button>
+      <div class="error-msg hidden" id="pregled-error"></div>
+    </form>
+  </section>
+
+</main>
+
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
