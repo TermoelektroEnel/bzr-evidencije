@@ -114,6 +114,7 @@
         <input type="file" id="izvestaj-file" accept=".pdf" class="hidden" />
         <span class="info-msg" id="izvestaj-filename">Nije izabran fajl</span>
         <a href="#" id="izvestaj-test-link" class="hidden" target="_blank" rel="noopener">Otvori</a>
+        <button type="button" class="secondary hidden" id="izvestaj-copy-btn">Kopiraj putanju</button>
       </div>
 
       <label for="folder-obrazac6">Folder sa Obrascem br. 6 (podesi jednom)</label>
@@ -124,7 +125,9 @@
         <input type="file" id="obrazac6-file" class="hidden" />
         <span class="info-msg" id="obrazac6-filename">Nije izabran fajl</span>
         <a href="#" id="obrazac6-test-link" class="hidden" target="_blank" rel="noopener">Otvori</a>
+        <button type="button" class="secondary hidden" id="obrazac6-copy-btn">Kopiraj putanju</button>
       </div>
+      <p class="info-msg">Napomena: iz bezbednosnih razloga browser ponekad neće sam da otvori fajl sa diska. Ako klik na "Otvori" ne uradi ništa, klikni "Kopiraj putanju" i nalepi (Ctrl+V) u Windows Explorer ili u prozor "Run" (Win+R).</p>
 
       <button type="submit" class="primary">Sačuvaj pregled</button>
       <div class="error-msg hidden" id="pregled-error"></div>

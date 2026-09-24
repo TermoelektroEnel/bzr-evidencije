@@ -34,10 +34,12 @@ const els = {
   izvestajFile: document.getElementById('izvestaj-file'),
   izvestajFilename: document.getElementById('izvestaj-filename'),
   izvestajTestLink: document.getElementById('izvestaj-test-link'),
+  izvestajCopyBtn: document.getElementById('izvestaj-copy-btn'),
   obrazac6BrowseBtn: document.getElementById('obrazac6-browse-btn'),
   obrazac6File: document.getElementById('obrazac6-file'),
   obrazac6Filename: document.getElementById('obrazac6-filename'),
   obrazac6TestLink: document.getElementById('obrazac6-test-link'),
+  obrazac6CopyBtn: document.getElementById('obrazac6-copy-btn'),
 };
 
 let trenutniIzvestajUrl = null;
@@ -53,7 +55,33 @@ function buildFileUrl(folder, filename) {
   return 'file:///' + f + '/' + filename;
 }
 
-function setupFilePicker({ folderInput, storageKey, browseBtn, fileInput, filenameSpan, testLink, getUrl, setUrl }) {
+// Vraća file:// URI nazad u putanju kakvu Windows Explorer razume (sa \ i bez file:///)
+function fileUrlToWindowsPath(url) {
+  if (!url) return '';
+  let p = url.replace(/^file:\/\/\//i, '').replace(/^file:\/\//i, '\\\\');
+  try { p = decodeURIComponent(p); } catch (e) { /* ostavi kako jeste */ }
+  if (!p.startsWith('\\\\')) p = p.replace(/\//g, '\\');
+  else p = '\\\\' + p.slice(2).replace(/\//g, '\\');
+  return p;
+}
+
+function escapeAttr(str) {
+  return String(str).replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+}
+
+async function copyPathToClipboard(path, btn) {
+  if (!path) return;
+  const original = btn.textContent;
+  try {
+    await navigator.clipboard.writeText(path);
+    btn.textContent = 'Kopirano!';
+  } catch (err) {
+    window.prompt('Kopiraj putanju (Ctrl+C):', path);
+  }
+  setTimeout(() => { btn.textContent = original; }, 1500);
+}
+
+function setupFilePicker({ folderInput, storageKey, browseBtn, fileInput, filenameSpan, testLink, copyBtn, getUrl, setUrl }) {
   const saved = localStorage.getItem(storageKey);
   if (saved) folderInput.value = saved;
 
@@ -72,7 +100,12 @@ function setupFilePicker({ folderInput, storageKey, browseBtn, fileInput, filena
     if (url) {
       testLink.href = url;
       testLink.classList.remove('hidden');
+      copyBtn.classList.remove('hidden');
     }
+  });
+
+  copyBtn.addEventListener('click', () => {
+    copyPathToClipboard(fileUrlToWindowsPath(getUrl()), copyBtn);
   });
 }
 
@@ -83,6 +116,8 @@ setupFilePicker({
   fileInput: els.izvestajFile,
   filenameSpan: els.izvestajFilename,
   testLink: els.izvestajTestLink,
+  copyBtn: els.izvestajCopyBtn,
+  getUrl: () => trenutniIzvestajUrl,
   setUrl: (url) => { trenutniIzvestajUrl = url; },
 });
 
@@ -93,6 +128,8 @@ setupFilePicker({
   fileInput: els.obrazac6File,
   filenameSpan: els.obrazac6Filename,
   testLink: els.obrazac6TestLink,
+  copyBtn: els.obrazac6CopyBtn,
+  getUrl: () => trenutniObrazac6Url,
   setUrl: (url) => { trenutniObrazac6Url = url; },
 });
 
@@ -101,6 +138,8 @@ function resetFilePickers() {
   trenutniObrazac6Url = null;
   els.izvestajFilename.textContent = 'Nije izabran fajl';
   els.obrazac6Filename.textContent = 'Nije izabran fajl';
+  els.izvestajCopyBtn.classList.add('hidden');
+  els.obrazac6CopyBtn.classList.add('hidden');
   els.izvestajTestLink.classList.add('hidden');
   els.obrazac6TestLink.classList.add('hidden');
   els.izvestajFile.value = '';
@@ -289,8 +328,14 @@ async function loadPregledi(matBr) {
       ${p.vazi_do ? `<div>Važi do: ${p.vazi_do}</div>` : ''}
       ${p.napomena ? `<div>Napomena: ${p.napomena}</div>` : ''}
       <div class="pregled-links">
-        ${p.izvestaj_url ? `<a href="${p.izvestaj_url}" target="_blank" rel="noopener">Izveštaj o pregledu</a>` : ''}
-        ${p.obrazac6_url ? `<a href="${p.obrazac6_url}" target="_blank" rel="noopener">Obrazac br. 6</a>` : ''}
+        ${p.izvestaj_url ? `
+          <a href="${p.izvestaj_url}" target="_blank" rel="noopener">Izveštaj o pregledu</a>
+          <button type="button" class="link-btn btn-copy-path" data-path="${escapeAttr(fileUrlToWindowsPath(p.izvestaj_url))}">Kopiraj putanju</button>
+        ` : ''}
+        ${p.obrazac6_url ? `
+          <a href="${p.obrazac6_url}" target="_blank" rel="noopener">Obrazac br. 6</a>
+          <button type="button" class="link-btn btn-copy-path" data-path="${escapeAttr(fileUrlToWindowsPath(p.obrazac6_url))}">Kopiraj putanju</button>
+        ` : ''}
       </div>
       <div class="pregled-actions">
         <button type="button" class="danger-link btn-obrisi-pregled" data-id="${p.id}">Obriši pregled</button>
@@ -299,8 +344,15 @@ async function loadPregledi(matBr) {
   `).join('');
 }
 
-// Brisanje pojedinačnog lekarskog pregleda (delegacija klika — lista se stalno iznova iscrtava)
+// Kopiranje putanje do lokalnog fajla (browser iz bezbednosnih razloga često ne
+// dozvoljava da se file:// link sam otvori sa https stranice — ovo je pouzdana zamena)
 els.pregrediList.addEventListener('click', async (e) => {
+  const copyBtn = e.target.closest('.btn-copy-path');
+  if (copyBtn) {
+    copyPathToClipboard(copyBtn.dataset.path, copyBtn);
+    return;
+  }
+
   const btn = e.target.closest('.btn-obrisi-pregled');
   if (!btn) return;
 

@@ -233,6 +233,18 @@ button.danger-link {
 button.danger-link:hover { color: #7d1a15; }
 button.danger-link:disabled { opacity: 0.5; cursor: default; }
 
+button.link-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--primary);
+  font-size: 13px;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+button.link-btn:hover { color: var(--primary-dark); }
+
 .print-only { display: none; }
 
 @media print {
