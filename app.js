@@ -70,7 +70,7 @@ async function loadZaposleni() {
   els.zaposleniInfo.textContent = 'Učitavanje...';
   const { data, error } = await supabaseClient
     .schema('bzr')
-    .from('bzr_zaposleni')
+    .from('v_zaposleni_status_rizika')
     .select('*')
     .order('prezime_ime', { ascending: true });
 
@@ -94,6 +94,7 @@ function renderZaposleniTable(list) {
       <td>${z.prezime_ime}</td>
       <td>${z.radno_mesto || ''}</td>
       <td>${z.radna_jedinica || ''}</td>
+      <td>${z.povecan_rizik ? '<span class="badge badge-risk">povećan rizik</span>' : ''}</td>
       <td><span class="badge">${z.aktivan ? 'aktivan' : 'neaktivan'}</span></td>
     `;
     tr.addEventListener('click', () => openDetail(z.mat_br));
@@ -122,8 +123,11 @@ async function openDetail(matBr) {
   if (!trenutniZaposleni) return;
 
   els.detailIme.textContent = trenutniZaposleni.prezime_ime;
-  els.detailMeta.textContent =
-    `Mat. br. ${trenutniZaposleni.mat_br} · ${trenutniZaposleni.radno_mesto || '—'} · ${trenutniZaposleni.radna_jedinica || '—'}`;
+  const rizikBadge = trenutniZaposleni.povecan_rizik
+    ? ' · <span class="badge badge-risk">povećan rizik</span>'
+    : '';
+  els.detailMeta.innerHTML =
+    `Mat. br. ${trenutniZaposleni.mat_br} · ${trenutniZaposleni.radno_mesto || '—'} · ${trenutniZaposleni.radna_jedinica || '—'}${rizikBadge}`;
 
   showView(els.detailView);
   await loadPregledi(matBr);
