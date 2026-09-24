@@ -28,7 +28,84 @@ const els = {
   pregrediList: document.getElementById('pregledi-list'),
   noviPregledForm: document.getElementById('novi-pregled-form'),
   pregledError: document.getElementById('pregled-error'),
+  folderIzvestaji: document.getElementById('folder-izvestaji'),
+  folderObrazac6: document.getElementById('folder-obrazac6'),
+  izvestajBrowseBtn: document.getElementById('izvestaj-browse-btn'),
+  izvestajFile: document.getElementById('izvestaj-file'),
+  izvestajFilename: document.getElementById('izvestaj-filename'),
+  izvestajTestLink: document.getElementById('izvestaj-test-link'),
+  obrazac6BrowseBtn: document.getElementById('obrazac6-browse-btn'),
+  obrazac6File: document.getElementById('obrazac6-file'),
+  obrazac6Filename: document.getElementById('obrazac6-filename'),
+  obrazac6TestLink: document.getElementById('obrazac6-test-link'),
 };
+
+let trenutniIzvestajUrl = null;
+let trenutniObrazac6Url = null;
+
+// ---------- LOKALNI FAJLOVI (izveštaj, obrazac 6) ----------
+
+function buildFileUrl(folder, filename) {
+  if (!folder || !filename) return '';
+  let f = folder.trim().replace(/\\/g, '/').replace(/\/+$/, '');
+  if (/^file:\/\//i.test(f)) return f + '/' + filename;
+  if (f.startsWith('//')) return 'file:' + f + '/' + filename; // UNC putanja
+  return 'file:///' + f + '/' + filename;
+}
+
+function setupFilePicker({ folderInput, storageKey, browseBtn, fileInput, filenameSpan, testLink, getUrl, setUrl }) {
+  const saved = localStorage.getItem(storageKey);
+  if (saved) folderInput.value = saved;
+
+  folderInput.addEventListener('input', () => {
+    localStorage.setItem(storageKey, folderInput.value.trim());
+  });
+
+  browseBtn.addEventListener('click', () => fileInput.click());
+
+  fileInput.addEventListener('change', () => {
+    const file = fileInput.files[0];
+    if (!file) return;
+    const url = buildFileUrl(folderInput.value, file.name);
+    setUrl(url);
+    filenameSpan.textContent = file.name;
+    if (url) {
+      testLink.href = url;
+      testLink.classList.remove('hidden');
+    }
+  });
+}
+
+setupFilePicker({
+  folderInput: els.folderIzvestaji,
+  storageKey: 'bzr_folder_izvestaji',
+  browseBtn: els.izvestajBrowseBtn,
+  fileInput: els.izvestajFile,
+  filenameSpan: els.izvestajFilename,
+  testLink: els.izvestajTestLink,
+  setUrl: (url) => { trenutniIzvestajUrl = url; },
+});
+
+setupFilePicker({
+  folderInput: els.folderObrazac6,
+  storageKey: 'bzr_folder_obrazac6',
+  browseBtn: els.obrazac6BrowseBtn,
+  fileInput: els.obrazac6File,
+  filenameSpan: els.obrazac6Filename,
+  testLink: els.obrazac6TestLink,
+  setUrl: (url) => { trenutniObrazac6Url = url; },
+});
+
+function resetFilePickers() {
+  trenutniIzvestajUrl = null;
+  trenutniObrazac6Url = null;
+  els.izvestajFilename.textContent = 'Nije izabran fajl';
+  els.obrazac6Filename.textContent = 'Nije izabran fajl';
+  els.izvestajTestLink.classList.add('hidden');
+  els.obrazac6TestLink.classList.add('hidden');
+  els.izvestajFile.value = '';
+  els.obrazac6File.value = '';
+}
 
 function showView(view) {
   els.loginView.classList.add('hidden');
@@ -229,8 +306,8 @@ els.noviPregledForm.addEventListener('submit', async (e) => {
     broj_uverenja: document.getElementById('broj-uverenja').value || null,
     vazi_do: document.getElementById('vazi-do').value || null,
     napomena: document.getElementById('napomena').value || null,
-    izvestaj_url: document.getElementById('izvestaj-url').value || null,
-    obrazac6_url: document.getElementById('obrazac6-url').value || null,
+    izvestaj_url: trenutniIzvestajUrl || null,
+    obrazac6_url: trenutniObrazac6Url || null,
   };
 
   const { error } = await supabaseClient.schema('bzr').from('lekarski_pregledi').insert(payload);
@@ -242,6 +319,10 @@ els.noviPregledForm.addEventListener('submit', async (e) => {
   }
 
   els.noviPregledForm.reset();
+  // form.reset() briše i folder polja (deo su iste forme) — vraćamo ih iz memorisane vrednosti
+  els.folderIzvestaji.value = localStorage.getItem('bzr_folder_izvestaji') || '';
+  els.folderObrazac6.value = localStorage.getItem('bzr_folder_obrazac6') || '';
+  resetFilePickers();
   await loadPregledi(trenutniZaposleni.mat_br);
 });
 

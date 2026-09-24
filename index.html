@@ -106,11 +106,25 @@
       <label for="napomena">Napomena</label>
       <textarea id="napomena"></textarea>
 
-      <label for="izvestaj-url">Link ka izveštaju o lekarskom pregledu (PDF)</label>
-      <input type="text" id="izvestaj-url" placeholder="npr. file:///C:/BZR/izvestaji/ime_prezime_2026.pdf" />
+      <label for="folder-izvestaji">Folder sa izveštajima o lekarskim pregledima (podesi jednom)</label>
+      <input type="text" id="folder-izvestaji" placeholder="npr. C:\BZR\izvestaji" />
+      <label>Izveštaj o lekarskom pregledu (PDF)</label>
+      <div class="file-picker-row">
+        <button type="button" class="secondary" id="izvestaj-browse-btn">Izaberi fajl...</button>
+        <input type="file" id="izvestaj-file" accept=".pdf" class="hidden" />
+        <span class="info-msg" id="izvestaj-filename">Nije izabran fajl</span>
+        <a href="#" id="izvestaj-test-link" class="hidden" target="_blank" rel="noopener">Otvori</a>
+      </div>
 
-      <label for="obrazac6-url">Link ka Obrascu br. 6</label>
-      <input type="text" id="obrazac6-url" placeholder="npr. file:///C:/BZR/obrazac6/ime_prezime_2026.pdf" />
+      <label for="folder-obrazac6">Folder sa Obrascem br. 6 (podesi jednom)</label>
+      <input type="text" id="folder-obrazac6" placeholder="npr. C:\BZR\obrazac6" />
+      <label>Obrazac br. 6</label>
+      <div class="file-picker-row">
+        <button type="button" class="secondary" id="obrazac6-browse-btn">Izaberi fajl...</button>
+        <input type="file" id="obrazac6-file" class="hidden" />
+        <span class="info-msg" id="obrazac6-filename">Nije izabran fajl</span>
+        <a href="#" id="obrazac6-test-link" class="hidden" target="_blank" rel="noopener">Otvori</a>
+      </div>
 
       <button type="submit" class="primary">Sačuvaj pregled</button>
       <div class="error-msg hidden" id="pregled-error"></div>
