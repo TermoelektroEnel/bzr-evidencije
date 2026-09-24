@@ -47,21 +47,30 @@ let trenutniObrazac6Url = null;
 
 // ---------- LOKALNI FAJLOVI (izveštaj, obrazac 6) ----------
 
+// Windows "Kopiraj kao putanju" (Shift+desni klik) automatski dodaje navodnike
+// oko putanje — ako se to nalepi u polje foldera, sve se pokvari. Uklanjamo ih.
+function sanitizeFolderPath(raw) {
+  return (raw || '').trim().replace(/^["']+|["']+$/g, '').trim();
+}
+
 function buildFileUrl(folder, filename) {
   if (!folder || !filename) return '';
-  let f = folder.trim().replace(/\\/g, '/').replace(/\/+$/, '');
+  let f = sanitizeFolderPath(folder).replace(/\\/g, '/').replace(/\/+$/, '');
   if (/^file:\/\//i.test(f)) return f + '/' + filename;
   if (f.startsWith('//')) return 'file:' + f + '/' + filename; // UNC putanja
   return 'file:///' + f + '/' + filename;
 }
 
 // Vraća file:// URI nazad u putanju kakvu Windows Explorer razume (sa \ i bez file:///)
+// Ako putanja sadrži razmak, uokviri je navodnicima — tako se sigurno lepi i u
+// Explorer adresnu traku i u prozor "Run" (Win+R), bez obzira na razmake u nazivu.
 function fileUrlToWindowsPath(url) {
   if (!url) return '';
   let p = url.replace(/^file:\/\/\//i, '').replace(/^file:\/\//i, '\\\\');
   try { p = decodeURIComponent(p); } catch (e) { /* ostavi kako jeste */ }
   if (!p.startsWith('\\\\')) p = p.replace(/\//g, '\\');
   else p = '\\\\' + p.slice(2).replace(/\//g, '\\');
+  if (/\s/.test(p)) p = `"${p}"`;
   return p;
 }
 
@@ -86,7 +95,17 @@ function setupFilePicker({ folderInput, storageKey, browseBtn, fileInput, filena
   if (saved) folderInput.value = saved;
 
   folderInput.addEventListener('input', () => {
-    localStorage.setItem(storageKey, folderInput.value.trim());
+    localStorage.setItem(storageKey, sanitizeFolderPath(folderInput.value));
+  });
+
+  // Ako je korisnik nalepio putanju kopiranu preko "Kopiraj kao putanju" (sa navodnicima),
+  // očisti ih čim napusti polje da se odmah vidi ispravljena vrednost.
+  folderInput.addEventListener('blur', () => {
+    const clean = sanitizeFolderPath(folderInput.value);
+    if (clean !== folderInput.value) {
+      folderInput.value = clean;
+      localStorage.setItem(storageKey, clean);
+    }
   });
 
   browseBtn.addEventListener('click', () => fileInput.click());
