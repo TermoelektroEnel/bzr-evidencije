@@ -177,6 +177,17 @@ tr.row-clickable:hover { background: #f0f4f8; }
   margin-bottom: 10px;
 }
 
+.pregled-item .pregled-links {
+  margin-top: 6px;
+  display: flex;
+  gap: 16px;
+}
+
+.pregled-item .pregled-links a {
+  color: var(--primary);
+  font-size: 13px;
+}
+
 .pregled-item .rezultat-sposoban { color: var(--ok); font-weight: 600; }
 .pregled-item .rezultat-nesposoban { color: var(--danger); font-weight: 600; }
 .pregled-item .rezultat-uslovno { color: #b06a00; font-weight: 600; }

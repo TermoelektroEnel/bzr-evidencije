@@ -193,9 +193,26 @@ async function loadPregledi(matBr) {
       ${p.broj_uverenja ? `<div>Broj uverenja: ${p.broj_uverenja}</div>` : ''}
       ${p.vazi_do ? `<div>Važi do: ${p.vazi_do}</div>` : ''}
       ${p.napomena ? `<div>Napomena: ${p.napomena}</div>` : ''}
+      <div class="pregled-links">
+        ${p.izvestaj_url ? `<a href="${p.izvestaj_url}" target="_blank" rel="noopener">Izveštaj o pregledu</a>` : ''}
+        ${p.obrazac6_url ? `<a href="${p.obrazac6_url}" target="_blank" rel="noopener">Obrazac br. 6</a>` : ''}
+      </div>
     </div>
   `).join('');
 }
+
+// Automatski postavi "Važi do" na datum pregleda + 1 godina (periodicitet od 12 meseci)
+document.getElementById('datum-pregleda').addEventListener('change', (e) => {
+  const val = e.target.value;
+  if (!val) return;
+  const d = new Date(val);
+  d.setFullYear(d.getFullYear() + 1);
+  const vaziDoInput = document.getElementById('vazi-do');
+  // Ne prepisuj ako je korisnik već ručno uneo datum
+  if (!vaziDoInput.value) {
+    vaziDoInput.value = d.toISOString().slice(0, 10);
+  }
+});
 
 els.noviPregledForm.addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -212,6 +229,8 @@ els.noviPregledForm.addEventListener('submit', async (e) => {
     broj_uverenja: document.getElementById('broj-uverenja').value || null,
     vazi_do: document.getElementById('vazi-do').value || null,
     napomena: document.getElementById('napomena').value || null,
+    izvestaj_url: document.getElementById('izvestaj-url').value || null,
+    obrazac6_url: document.getElementById('obrazac6-url').value || null,
   };
 
   const { error } = await supabaseClient.schema('bzr').from('lekarski_pregledi').insert(payload);
