@@ -292,9 +292,36 @@ async function loadPregledi(matBr) {
         ${p.izvestaj_url ? `<a href="${p.izvestaj_url}" target="_blank" rel="noopener">Izveštaj o pregledu</a>` : ''}
         ${p.obrazac6_url ? `<a href="${p.obrazac6_url}" target="_blank" rel="noopener">Obrazac br. 6</a>` : ''}
       </div>
+      <div class="pregled-actions">
+        <button type="button" class="danger-link btn-obrisi-pregled" data-id="${p.id}">Obriši pregled</button>
+      </div>
     </div>
   `).join('');
 }
+
+// Brisanje pojedinačnog lekarskog pregleda (delegacija klika — lista se stalno iznova iscrtava)
+els.pregrediList.addEventListener('click', async (e) => {
+  const btn = e.target.closest('.btn-obrisi-pregled');
+  if (!btn) return;
+
+  const id = btn.dataset.id;
+  if (!confirm('Da li sigurno želiš da obrišeš ovaj lekarski pregled? Ovo se ne može poništiti.')) {
+    return;
+  }
+
+  btn.disabled = true;
+  const { error } = await supabaseClient.schema('bzr').from('lekarski_pregledi').delete().eq('id', id);
+
+  if (error) {
+    alert('Greška pri brisanju: ' + error.message);
+    btn.disabled = false;
+    return;
+  }
+
+  if (trenutniZaposleni) {
+    await loadPregledi(trenutniZaposleni.mat_br);
+  }
+});
 
 // Automatski postavi "Važi do" na datum pregleda + 1 godina (periodicitet od 12 meseci)
 document.getElementById('datum-pregleda').addEventListener('change', (e) => {

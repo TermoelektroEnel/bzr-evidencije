@@ -215,6 +215,24 @@ tr.row-clickable:hover { background: #f0f4f8; }
 .pregled-item .rezultat-nesposoban { color: var(--danger); font-weight: 600; }
 .pregled-item .rezultat-uslovno { color: #b06a00; font-weight: 600; }
 
+.pregled-item .pregled-actions {
+  margin-top: 8px;
+  text-align: right;
+}
+
+button.danger-link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--danger);
+  font-size: 12px;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+button.danger-link:hover { color: #7d1a15; }
+button.danger-link:disabled { opacity: 0.5; cursor: default; }
+
 .print-only { display: none; }
 
 @media print {
