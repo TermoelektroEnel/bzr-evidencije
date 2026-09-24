@@ -14,7 +14,12 @@ const els = {
   loginEmail: document.getElementById('login-email'),
   loginPassword: document.getElementById('login-password'),
   loginError: document.getElementById('login-error'),
-  searchInput: document.getElementById('search-input'),
+  filterMatbr: document.getElementById('filter-matbr'),
+  filterIme: document.getElementById('filter-ime'),
+  filterRadnoMesto: document.getElementById('filter-radno-mesto'),
+  filterRadnaJedinica: document.getElementById('filter-radna-jedinica'),
+  filterRizik: document.getElementById('filter-rizik'),
+  filterStatus: document.getElementById('filter-status'),
   zaposleniTbody: document.getElementById('zaposleni-tbody'),
   zaposleniInfo: document.getElementById('zaposleni-info'),
   backToList: document.getElementById('back-to-list'),
@@ -81,10 +86,11 @@ async function loadZaposleni() {
 
   zaposleniCache = data || [];
   els.zaposleniInfo.textContent = `Ukupno: ${zaposleniCache.length}`;
-  renderZaposleniTable(zaposleniCache);
+  applyFilters();
 }
 
 function renderZaposleniTable(list) {
+  els.zaposleniInfo.textContent = `Prikazano: ${list.length} od ${zaposleniCache.length}`;
   els.zaposleniTbody.innerHTML = '';
   list.forEach((z) => {
     const tr = document.createElement('tr');
@@ -102,14 +108,34 @@ function renderZaposleniTable(list) {
   });
 }
 
-els.searchInput.addEventListener('input', () => {
-  const q = els.searchInput.value.trim().toLowerCase();
-  const filtered = zaposleniCache.filter((z) =>
-    (z.prezime_ime || '').toLowerCase().includes(q) ||
-    (z.radno_mesto || '').toLowerCase().includes(q) ||
-    (z.mat_br || '').toLowerCase().includes(q)
-  );
+function applyFilters() {
+  const matbr = els.filterMatbr.value.trim().toLowerCase();
+  const ime = els.filterIme.value.trim().toLowerCase();
+  const radnoMesto = els.filterRadnoMesto.value.trim().toLowerCase();
+  const radnaJedinica = els.filterRadnaJedinica.value.trim().toLowerCase();
+  const rizik = els.filterRizik.value; // '', 'da', 'ne'
+  const status = els.filterStatus.value; // '', 'aktivan', 'neaktivan'
+
+  const filtered = zaposleniCache.filter((z) => {
+    if (matbr && !(z.mat_br || '').toLowerCase().includes(matbr)) return false;
+    if (ime && !(z.prezime_ime || '').toLowerCase().includes(ime)) return false;
+    if (radnoMesto && !(z.radno_mesto || '').toLowerCase().includes(radnoMesto)) return false;
+    if (radnaJedinica && !(z.radna_jedinica || '').toLowerCase().includes(radnaJedinica)) return false;
+    if (rizik === 'da' && !z.povecan_rizik) return false;
+    if (rizik === 'ne' && z.povecan_rizik) return false;
+    if (status === 'aktivan' && !z.aktivan) return false;
+    if (status === 'neaktivan' && z.aktivan) return false;
+    return true;
+  });
+
   renderZaposleniTable(filtered);
+}
+
+[els.filterMatbr, els.filterIme, els.filterRadnoMesto, els.filterRadnaJedinica].forEach((el) => {
+  el.addEventListener('input', applyFilters);
+});
+[els.filterRizik, els.filterStatus].forEach((el) => {
+  el.addEventListener('change', applyFilters);
 });
 
 els.backToList.addEventListener('click', () => {

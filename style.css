@@ -113,7 +113,20 @@ button.secondary {
 .info-msg { color: var(--muted); font-size: 13px; }
 
 /* Zaposleni lista */
-#search-input { max-width: 320px; }
+tr.filter-row th {
+  padding: 4px 6px;
+  background: #fafbfc;
+  border-bottom: 2px solid var(--border);
+}
+
+tr.filter-row input,
+tr.filter-row select {
+  width: 100%;
+  padding: 5px 6px;
+  font-size: 13px;
+  font-weight: normal;
+  text-transform: none;
+}
 
 table {
   width: 100%;

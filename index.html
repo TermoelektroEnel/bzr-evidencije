@@ -30,7 +30,6 @@
   <!-- LISTA ZAPOSLENIH -->
   <section id="zaposleni-view" class="panel hidden">
     <h2>Zaposleni</h2>
-    <input type="text" id="search-input" placeholder="Pretraga po imenu ili radnom mestu..." />
     <table id="zaposleni-table">
       <thead>
         <tr>
@@ -40,6 +39,26 @@
           <th>Radna jedinica</th>
           <th>Rizik</th>
           <th>Status</th>
+        </tr>
+        <tr class="filter-row">
+          <th><input type="text" id="filter-matbr" placeholder="filter..." /></th>
+          <th><input type="text" id="filter-ime" placeholder="filter..." /></th>
+          <th><input type="text" id="filter-radno-mesto" placeholder="filter..." /></th>
+          <th><input type="text" id="filter-radna-jedinica" placeholder="filter..." /></th>
+          <th>
+            <select id="filter-rizik">
+              <option value="">svi</option>
+              <option value="da">povećan rizik</option>
+              <option value="ne">nije povećan rizik</option>
+            </select>
+          </th>
+          <th>
+            <select id="filter-status">
+              <option value="">svi</option>
+              <option value="aktivan">aktivan</option>
+              <option value="neaktivan">neaktivan</option>
+            </select>
+          </th>
         </tr>
       </thead>
       <tbody id="zaposleni-tbody"></tbody>
