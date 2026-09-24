@@ -166,15 +166,33 @@ async function loadZaposleni() {
   applyFilters();
 }
 
+function computeRizikStatus(z) {
+  if (!z.povecan_rizik) return null;
+  if (!z.poslednji_pregled_vazi_do) {
+    return { color: 'red', label: 'Nema evidentiran lekarski pregled' };
+  }
+  const danas = new Date();
+  danas.setHours(0, 0, 0, 0);
+  const vaziDo = new Date(z.poslednji_pregled_vazi_do);
+  const diffDays = Math.round((vaziDo - danas) / (1000 * 60 * 60 * 24));
+  if (diffDays < 0) return { color: 'red', label: `Lekarski istekao pre ${Math.abs(diffDays)} dan(a)` };
+  if (diffDays <= 15) return { color: 'orange', label: `Ističe za ${diffDays} dan(a)` };
+  return { color: 'green', label: `Važi do ${z.poslednji_pregled_vazi_do}` };
+}
+
 function renderZaposleniTable(list) {
   els.zaposleniInfo.textContent = `Prikazano: ${list.length} od ${zaposleniCache.length}`;
   els.zaposleniTbody.innerHTML = '';
   list.forEach((z) => {
     const tr = document.createElement('tr');
     tr.className = 'row-clickable';
+    const status = computeRizikStatus(z);
+    const dotHtml = status
+      ? `<span class="rizik-dot rizik-dot-${status.color}" title="${status.label}"></span>`
+      : '';
     tr.innerHTML = `
       <td>${z.mat_br}</td>
-      <td>${z.prezime_ime}</td>
+      <td>${dotHtml}${z.prezime_ime}</td>
       <td>${z.radno_mesto || ''}</td>
       <td>${z.radna_jedinica || ''}</td>
       <td>${z.povecan_rizik ? '<span class="badge badge-risk">povećan rizik</span>' : ''}</td>
