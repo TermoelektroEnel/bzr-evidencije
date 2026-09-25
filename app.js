@@ -19,6 +19,7 @@ const els = {
   filterRadnoMesto: document.getElementById('filter-radno-mesto'),
   filterRadnaJedinica: document.getElementById('filter-radna-jedinica'),
   filterRizik: document.getElementById('filter-rizik'),
+  filterSemafor: document.getElementById('filter-semafor'),
   filterStatus: document.getElementById('filter-status'),
   zaposleniTbody: document.getElementById('zaposleni-tbody'),
   zaposleniInfo: document.getElementById('zaposleni-info'),
@@ -254,12 +255,16 @@ function renderZaposleniTable(list) {
     const dotHtml = status
       ? `<span class="rizik-dot rizik-dot-${status.color}" title="${status.label}"></span>`
       : '';
+    const semaforCell = status
+      ? `${dotHtml}${status.label}`
+      : '<span class="info-msg">—</span>';
     tr.innerHTML = `
       <td>${z.mat_br}</td>
       <td>${dotHtml}${z.prezime_ime}</td>
       <td>${z.radno_mesto || ''}</td>
       <td>${z.radna_jedinica || ''}</td>
       <td>${z.povecan_rizik ? '<span class="badge badge-risk">povećan rizik</span>' : ''}${(z.rizik_override === true || z.rizik_override === false) ? ` <span class="badge" title="${escapeAttr(z.rizik_napomena || 'Ručno promenjen status')}">ručno</span>` : ''}</td>
+      <td>${semaforCell}</td>
       <td><span class="badge">${z.aktivan ? 'aktivan' : 'neaktivan'}</span></td>
     `;
     tr.addEventListener('click', () => openDetail(z.mat_br));
@@ -273,6 +278,7 @@ function applyFilters() {
   const radnoMesto = els.filterRadnoMesto.value.trim().toLowerCase();
   const radnaJedinica = els.filterRadnaJedinica.value.trim().toLowerCase();
   const rizik = els.filterRizik.value; // '', 'da', 'ne'
+  const semafor = els.filterSemafor.value; // '', 'red', 'orange', 'green', 'none'
   const status = els.filterStatus.value; // '', 'aktivan', 'neaktivan'
 
   const filtered = zaposleniCache.filter((z) => {
@@ -282,6 +288,11 @@ function applyFilters() {
     if (radnaJedinica && !(z.radna_jedinica || '').toLowerCase().includes(radnaJedinica)) return false;
     if (rizik === 'da' && !z.povecan_rizik) return false;
     if (rizik === 'ne' && z.povecan_rizik) return false;
+    if (semafor) {
+      const zStatus = computeRizikStatus(z);
+      const zBoja = zStatus ? zStatus.color : 'none';
+      if (zBoja !== semafor) return false;
+    }
     if (status === 'aktivan' && !z.aktivan) return false;
     if (status === 'neaktivan' && z.aktivan) return false;
     return true;
@@ -293,7 +304,7 @@ function applyFilters() {
 [els.filterMatbr, els.filterIme, els.filterRadnoMesto, els.filterRadnaJedinica].forEach((el) => {
   el.addEventListener('input', applyFilters);
 });
-[els.filterRizik, els.filterStatus].forEach((el) => {
+[els.filterRizik, els.filterSemafor, els.filterStatus].forEach((el) => {
   el.addEventListener('change', applyFilters);
 });
 

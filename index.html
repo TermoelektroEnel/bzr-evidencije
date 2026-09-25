@@ -38,6 +38,7 @@
           <th>Radno mesto</th>
           <th>Radna jedinica</th>
           <th>Rizik</th>
+          <th>Semafor</th>
           <th>Status</th>
         </tr>
         <tr class="filter-row">
@@ -50,6 +51,15 @@
               <option value="">svi</option>
               <option value="da">povećan rizik</option>
               <option value="ne">nije povećan rizik</option>
+            </select>
+          </th>
+          <th>
+            <select id="filter-semafor">
+              <option value="">svi</option>
+              <option value="red">crveni (isteklo / nema pregled)</option>
+              <option value="orange">narandžasti (ističe uskoro)</option>
+              <option value="green">zeleni (važi)</option>
+              <option value="none">bez semafora (nije povećan rizik)</option>
             </select>
           </th>
           <th>
