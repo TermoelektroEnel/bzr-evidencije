@@ -40,6 +40,12 @@ const els = {
   obrazac6Filename: document.getElementById('obrazac6-filename'),
   obrazac6TestLink: document.getElementById('obrazac6-test-link'),
   obrazac6CopyBtn: document.getElementById('obrazac6-copy-btn'),
+  rizikPoAktuInfo: document.getElementById('rizik-po-aktu-info'),
+  rizikOverrideSelect: document.getElementById('rizik-override-select'),
+  rizikNapomenaInput: document.getElementById('rizik-napomena-input'),
+  rizikSaveBtn: document.getElementById('rizik-save-btn'),
+  rizikError: document.getElementById('rizik-error'),
+  rizikSavedMsg: document.getElementById('rizik-saved-msg'),
 };
 
 let trenutniIzvestajUrl = null;
@@ -253,7 +259,7 @@ function renderZaposleniTable(list) {
       <td>${dotHtml}${z.prezime_ime}</td>
       <td>${z.radno_mesto || ''}</td>
       <td>${z.radna_jedinica || ''}</td>
-      <td>${z.povecan_rizik ? '<span class="badge badge-risk">povećan rizik</span>' : ''}</td>
+      <td>${z.povecan_rizik ? '<span class="badge badge-risk">povećan rizik</span>' : ''}${(z.rizik_override === true || z.rizik_override === false) ? ` <span class="badge" title="${escapeAttr(z.rizik_napomena || 'Ručno promenjen status')}">ručno</span>` : ''}</td>
       <td><span class="badge">${z.aktivan ? 'aktivan' : 'neaktivan'}</span></td>
     `;
     tr.addEventListener('click', () => openDetail(z.mat_br));
@@ -308,9 +314,76 @@ async function openDetail(matBr) {
   els.detailMeta.innerHTML =
     `Mat. br. ${trenutniZaposleni.mat_br} · ${trenutniZaposleni.radno_mesto || '—'} · ${trenutniZaposleni.radna_jedinica || '—'}${rizikBadge}`;
 
+  prikaziRizikStatus(trenutniZaposleni);
+
   showView(els.detailView);
   await loadPregledi(matBr);
 }
+
+// ---------- STATUS RIZIKA (ručni izuzetak od kataloga radnih mesta) ----------
+
+function prikaziRizikStatus(z) {
+  els.rizikError.classList.add('hidden');
+  els.rizikSavedMsg.classList.add('hidden');
+
+  els.rizikPoAktuInfo.innerHTML = z.povecan_rizik_po_aktu
+    ? 'Prema Aktu o proceni rizika, ovo radno mesto je <strong>sa povećanim rizikom</strong>.'
+    : 'Prema Aktu o proceni rizika, ovo radno mesto <strong>nije</strong> sa povećanim rizikom.';
+
+  if (z.rizik_override === true) {
+    els.rizikOverrideSelect.value = 'da';
+  } else if (z.rizik_override === false) {
+    els.rizikOverrideSelect.value = 'ne';
+  } else {
+    els.rizikOverrideSelect.value = '';
+  }
+  els.rizikNapomenaInput.value = z.rizik_napomena || '';
+}
+
+els.rizikSaveBtn.addEventListener('click', async () => {
+  if (!trenutniZaposleni) return;
+  els.rizikError.classList.add('hidden');
+  els.rizikSavedMsg.classList.add('hidden');
+
+  const izbor = els.rizikOverrideSelect.value; // '', 'da', 'ne'
+  const napomena = els.rizikNapomenaInput.value.trim() || null;
+  const matBr = trenutniZaposleni.mat_br;
+
+  els.rizikSaveBtn.disabled = true;
+  let error;
+
+  if (izbor === '') {
+    // Automatski (prema Aktu) — briše ručni izuzetak ako postoji
+    ({ error } = await supabaseClient.schema('bzr').from('rizik_override').delete().eq('mat_br', matBr));
+  } else {
+    ({ error } = await supabaseClient.schema('bzr').from('rizik_override').upsert({
+      mat_br: matBr,
+      povecan_rizik: izbor === 'da',
+      napomena,
+    }));
+  }
+
+  els.rizikSaveBtn.disabled = false;
+
+  if (error) {
+    els.rizikError.textContent = 'Greška pri čuvanju: ' + error.message;
+    els.rizikError.classList.remove('hidden');
+    return;
+  }
+
+  els.rizikSavedMsg.classList.remove('hidden');
+  await loadZaposleni();
+  trenutniZaposleni = zaposleniCache.find((z) => z.mat_br === matBr);
+  if (trenutniZaposleni) {
+    els.detailIme.textContent = trenutniZaposleni.prezime_ime;
+    const rizikBadge = trenutniZaposleni.povecan_rizik
+      ? ' · <span class="badge badge-risk">povećan rizik</span>'
+      : '';
+    els.detailMeta.innerHTML =
+      `Mat. br. ${trenutniZaposleni.mat_br} · ${trenutniZaposleni.radno_mesto || '—'} · ${trenutniZaposleni.radna_jedinica || '—'}${rizikBadge}`;
+    prikaziRizikStatus(trenutniZaposleni);
+  }
+});
 
 async function loadPregledi(matBr) {
   els.pregrediList.innerHTML = '<p class="info-msg">Učitavanje...</p>';

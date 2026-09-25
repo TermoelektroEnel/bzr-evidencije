@@ -72,6 +72,20 @@
     <h2 id="detail-ime"></h2>
     <p class="info-msg" id="detail-meta"></p>
 
+    <h3>Status radnog mesta (povećan rizik)</h3>
+    <p class="info-msg" id="rizik-po-aktu-info"></p>
+    <label for="rizik-override-select">Stvarni status ovog zaposlenog</label>
+    <select id="rizik-override-select">
+      <option value="">Automatski (prema Aktu o proceni rizika)</option>
+      <option value="da">Da — radi na poslovima sa povećanim rizikom</option>
+      <option value="ne">Ne — izuzetak (trenutno ne radi na tim poslovima)</option>
+    </select>
+    <label for="rizik-napomena-input">Napomena / razlog izuzetka</label>
+    <textarea id="rizik-napomena-input" placeholder="npr. lekarska ocena nesposobnosti za rad na visini, privremeni raspored na drugo radno mesto i sl."></textarea>
+    <button type="button" class="primary" id="rizik-save-btn">Sačuvaj status rizika</button>
+    <div class="error-msg hidden" id="rizik-error"></div>
+    <div class="info-msg hidden" id="rizik-saved-msg">Sačuvano.</div>
+
     <h3>Lekarski pregledi</h3>
     <div id="pregledi-list"></div>
 

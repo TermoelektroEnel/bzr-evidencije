@@ -19,6 +19,7 @@ Korisnike (login/lozinka) dodaješ ručno u Supabase dashboardu: **Authenticatio
 - [x] `bzr` šema, tabele `radna_mesta_rizik` i `lekarski_pregledi`, RLS
 - [x] FDW veza ka bazi zaposlenih (Adamov projekat)
 - [x] Prijava, lista zaposlenih, pregled i unos lekarskih pregleda po zaposlenom
+- [x] Ručni izuzetak od statusa "povećan rizik" po zaposlenom (tabela `rizik_override`) — za slučajeve kad neko po Aktu radi na mestu sa povećanim rizikom, ali trenutno (npr. zdravstveni razlozi) ne obavlja te poslove
 - [ ] Administracija kataloga radnih mesta sa povećanim rizikom (`radna_mesta_rizik`)
 - [ ] Štampa/izvoz na propisanom obrascu
 - [ ] Ostale evidencije (povrede na radu, obuke, LZO, ...)
