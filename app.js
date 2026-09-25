@@ -512,7 +512,11 @@ els.noviPregledForm.addEventListener('submit', async (e) => {
   els.folderIzvestaji.value = localStorage.getItem('bzr_folder_izvestaji') || '';
   els.folderObrazac6.value = localStorage.getItem('bzr_folder_obrazac6') || '';
   resetFilePickers();
-  await loadPregledi(trenutniZaposleni.mat_br);
+
+  // Novi pregled može da promeni status rizika (npr. datum isteka) — osveži listu
+  // i vrati se na nju, umesto da ostaneš na detaljima zaposlenog.
+  await loadZaposleni();
+  showView(els.zaposleniView);
 });
 
 // ---------- START ----------
