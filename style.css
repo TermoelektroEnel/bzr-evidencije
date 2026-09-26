@@ -281,6 +281,10 @@ button.link-btn {
 
 button.link-btn:hover { color: var(--primary-dark); }
 
+.tezina-laka { color: var(--ok); font-weight: 600; }
+.tezina-teska { color: #b06a00; font-weight: 600; }
+.tezina-smrtna { color: var(--danger); font-weight: 700; }
+
 .print-only { display: none; }
 
 @media print {
