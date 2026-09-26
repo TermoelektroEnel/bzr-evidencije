@@ -50,6 +50,42 @@ main {
   padding: 0 16px;
 }
 
+/* Portal navigacija */
+.portal-nav {
+  display: flex;
+  gap: 4px;
+  padding: 0 24px;
+  background: var(--primary-dark);
+  border-top: 1px solid rgba(255,255,255,0.15);
+}
+
+.portal-nav .nav-tab {
+  background: transparent;
+  border: none;
+  color: rgba(255,255,255,0.75);
+  padding: 10px 16px;
+  cursor: pointer;
+  font-size: 14px;
+  border-bottom: 3px solid transparent;
+}
+
+.portal-nav .nav-tab:hover { color: #fff; }
+
+.portal-nav .nav-tab.active {
+  color: #fff;
+  border-bottom-color: #fff;
+  font-weight: 600;
+}
+
+.panel-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.panel-header-row h2 { margin: 0; }
+
 .panel {
   background: var(--panel);
   border: 1px solid var(--border);
@@ -247,9 +283,21 @@ button.link-btn:hover { color: var(--primary-dark); }
 
 .print-only { display: none; }
 
+#obrazac1-print { display: none; }
+
+#obrazac1-print h2 { margin-bottom: 4px; }
+#obrazac1-print .obrazac1-meta { color: var(--muted); font-size: 13px; margin-bottom: 14px; }
+#obrazac1-print table { width: 100%; border-collapse: collapse; font-size: 12px; }
+#obrazac1-print th, #obrazac1-print td { border: 1px solid #333; padding: 5px 6px; text-align: left; }
+#obrazac1-print th { background: #eee; }
+
 @media print {
-  header.app-header, #search-input, #novi-pregled-form, .no-print, .back-link { display: none !important; }
+  header.app-header, .portal-nav, #search-input, #novi-pregled-form, .no-print, .back-link { display: none !important; }
   .print-only { display: block; }
   body { background: #fff; }
   .panel { border: none; padding: 0; }
+
+  /* Kad se štampa Obrazac 1, sakrij sve ostalo i prikaži samo taj sadržaj */
+  body.printing-obrazac1 > *:not(#obrazac1-print) { display: none !important; }
+  body.printing-obrazac1 #obrazac1-print { display: block !important; }
 }

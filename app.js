@@ -7,8 +7,15 @@ let trenutniZaposleni = null;
 
 const els = {
   loginView: document.getElementById('login-view'),
+  portalNav: document.getElementById('portal-nav'),
+  navTabs: document.querySelectorAll('.nav-tab'),
+  modulZaposleni: document.getElementById('modul-zaposleni'),
+  modulOprema: document.getElementById('modul-oprema'),
+  modulPovrede: document.getElementById('modul-povrede'),
   zaposleniView: document.getElementById('zaposleni-view'),
   detailView: document.getElementById('detail-view'),
+  obrazac1Btn: document.getElementById('obrazac1-btn'),
+  obrazac1Print: document.getElementById('obrazac1-print'),
   logoutBtn: document.getElementById('logout-btn'),
   loginBtn: document.getElementById('login-btn'),
   loginEmail: document.getElementById('login-email'),
@@ -47,6 +54,10 @@ const els = {
   rizikSaveBtn: document.getElementById('rizik-save-btn'),
   rizikError: document.getElementById('rizik-error'),
   rizikSavedMsg: document.getElementById('rizik-saved-msg'),
+  obrazac6Section: document.getElementById('obrazac6-section'),
+  obrazac6RazlogInput: document.getElementById('obrazac6-razlog-input'),
+  obrazac6GenerisiBtn: document.getElementById('obrazac6-generisi-btn'),
+  obrazac6GenError: document.getElementById('obrazac6-gen-error'),
 };
 
 let trenutniIzvestajUrl = null;
@@ -83,6 +94,28 @@ function fileUrlToWindowsPath(url) {
 
 function escapeAttr(str) {
   return String(str).replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+}
+
+function escapeHtml(str) {
+  return String(str == null ? '' : str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function formatDatumSrpski(d) {
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const yyyy = d.getFullYear();
+  return `${dd}.${mm}.${yyyy}.`;
+}
+
+function triggerDownload(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
 }
 
 async function copyPathToClipboard(path, btn) {
@@ -172,24 +205,56 @@ function resetFilePickers() {
   els.obrazac6File.value = '';
 }
 
+// Prebacuje između "Zaposleni" i "Detalji zaposlenog" unutar modula Zaposleni
 function showView(view) {
-  els.loginView.classList.add('hidden');
   els.zaposleniView.classList.add('hidden');
   els.detailView.classList.add('hidden');
   view.classList.remove('hidden');
 }
+
+// ---------- PORTAL (navigacija između modula) ----------
+
+function showLogin() {
+  els.portalNav.classList.add('hidden');
+  els.logoutBtn.classList.add('hidden');
+  els.loginView.classList.remove('hidden');
+  els.modulZaposleni.classList.add('hidden');
+  els.modulOprema.classList.add('hidden');
+  els.modulPovrede.classList.add('hidden');
+}
+
+function switchModul(name) {
+  els.modulZaposleni.classList.toggle('hidden', name !== 'zaposleni');
+  els.modulOprema.classList.toggle('hidden', name !== 'oprema');
+  els.modulPovrede.classList.toggle('hidden', name !== 'povrede');
+  els.navTabs.forEach((btn) => {
+    btn.classList.toggle('active', btn.dataset.modul === name);
+  });
+  if (name === 'zaposleni') {
+    showView(els.zaposleniView);
+  }
+}
+
+function showPortal() {
+  els.loginView.classList.add('hidden');
+  els.portalNav.classList.remove('hidden');
+  els.logoutBtn.classList.remove('hidden');
+  switchModul('zaposleni');
+}
+
+els.navTabs.forEach((btn) => {
+  btn.addEventListener('click', () => switchModul(btn.dataset.modul));
+});
 
 // ---------- AUTH ----------
 
 async function checkSession() {
   const { data: { session } } = await supabaseClient.auth.getSession();
   if (session) {
-    els.logoutBtn.classList.remove('hidden');
-    showView(els.zaposleniView);
+    showPortal();
     loadZaposleni();
   } else {
-    els.logoutBtn.classList.add('hidden');
-    showView(els.loginView);
+    showLogin();
   }
 }
 
@@ -312,6 +377,111 @@ els.backToList.addEventListener('click', () => {
   showView(els.zaposleniView);
 });
 
+// ---------- OBRAZAC 1 (registar radnih mesta sa povećanim rizikom, za štampu) ----------
+
+async function generisiObrazac1() {
+  const rizicni = zaposleniCache.filter((z) => z.povecan_rizik);
+  if (rizicni.length === 0) {
+    alert('Nema zaposlenih sa povećanim rizikom za štampu Obrasca 1.');
+    return;
+  }
+
+  els.obrazac1Btn.disabled = true;
+  const originalLabel = els.obrazac1Btn.textContent;
+  els.obrazac1Btn.textContent = 'Pripremam...';
+
+  try {
+    const matBrovi = rizicni.map((z) => z.mat_br);
+
+    const { data: katalog, error: katalogErr } = await supabaseClient
+      .schema('bzr')
+      .from('radna_mesta_rizik')
+      .select('sifra_radnog_mesta, periodicitet_meseci')
+      .eq('aktivan', true);
+    if (katalogErr) throw katalogErr;
+    const periodicitetMap = {};
+    (katalog || []).forEach((r) => { periodicitetMap[r.sifra_radnog_mesta] = r.periodicitet_meseci; });
+
+    const { data: pregledi, error: pregErr } = await supabaseClient
+      .schema('bzr')
+      .from('lekarski_pregledi')
+      .select('mat_br, datum_pregleda, vazi_do, broj_uverenja, rezultat')
+      .in('mat_br', matBrovi)
+      .order('datum_pregleda', { ascending: false });
+    if (pregErr) throw pregErr;
+
+    // Za svakog zaposlenog uzimamo samo NAJNOVIJI pregled (lista je već sortirana po datumu opadajuće)
+    const poslednjiMap = {};
+    (pregledi || []).forEach((p) => {
+      if (!poslednjiMap[p.mat_br]) poslednjiMap[p.mat_br] = p;
+    });
+
+    const redovi = rizicni
+      .slice()
+      .sort((a, b) => (a.prezime_ime || '').localeCompare(b.prezime_ime || ''))
+      .map((z) => {
+        const p = poslednjiMap[z.mat_br];
+        return {
+          radnoMesto: z.radno_mesto || '',
+          ime: z.prezime_ime || '',
+          interval: periodicitetMap[z.sifra_radnog_mesta] ?? '',
+          datumPregleda: (p && p.datum_pregleda) || '',
+          datumSledeceg: (p && p.vazi_do) || '',
+          brojUverenja: (p && p.broj_uverenja) || '',
+          ocena: (p && p.rezultat) || '',
+        };
+      });
+
+    const danas = formatDatumSrpski(new Date());
+    els.obrazac1Print.innerHTML = `
+      <h2>OBRAZAC 1 — Evidencija o radnim mestima sa povećanim rizikom</h2>
+      <p class="obrazac1-meta">Termoelektro Enel AD &middot; Bačvanska 21b/III, Beograd &middot; PIB 100252434 &middot; Datum izvoda: ${danas}</p>
+      <table>
+        <thead>
+          <tr>
+            <th>Naziv radnog mesta</th>
+            <th>Ime i prezime zaposlenog</th>
+            <th>Interval pregleda (mes.)</th>
+            <th>Datum poslednjeg pregleda</th>
+            <th>Datum sledećeg pregleda</th>
+            <th>Broj lek. izveštaja</th>
+            <th>Ocena sposobnosti</th>
+            <th>Preduzete mere</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${redovi.map((r) => `
+            <tr>
+              <td>${escapeHtml(r.radnoMesto)}</td>
+              <td>${escapeHtml(r.ime)}</td>
+              <td>${escapeHtml(r.interval)}</td>
+              <td>${escapeHtml(r.datumPregleda)}</td>
+              <td>${escapeHtml(r.datumSledeceg)}</td>
+              <td>${escapeHtml(r.brojUverenja)}</td>
+              <td>${escapeHtml(r.ocena)}</td>
+              <td></td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    `;
+
+    document.body.classList.add('printing-obrazac1');
+    window.print();
+  } catch (err) {
+    alert('Greška pri pripremi Obrasca 1: ' + (err.message || err));
+  } finally {
+    els.obrazac1Btn.disabled = false;
+    els.obrazac1Btn.textContent = originalLabel;
+  }
+}
+
+els.obrazac1Btn.addEventListener('click', generisiObrazac1);
+
+window.addEventListener('afterprint', () => {
+  document.body.classList.remove('printing-obrazac1');
+});
+
 // ---------- DETALJI + LEKARSKI PREGLEDI ----------
 
 async function openDetail(matBr) {
@@ -349,6 +519,9 @@ function prikaziRizikStatus(z) {
     els.rizikOverrideSelect.value = '';
   }
   els.rizikNapomenaInput.value = z.rizik_napomena || '';
+
+  els.obrazac6Section.classList.toggle('hidden', !z.povecan_rizik);
+  els.obrazac6GenError.classList.add('hidden');
 }
 
 els.rizikSaveBtn.addEventListener('click', async () => {
@@ -393,6 +566,91 @@ els.rizikSaveBtn.addEventListener('click', async () => {
     els.detailMeta.innerHTML =
       `Mat. br. ${trenutniZaposleni.mat_br} · ${trenutniZaposleni.radno_mesto || '—'} · ${trenutniZaposleni.radna_jedinica || '—'}${rizikBadge}`;
     prikaziRizikStatus(trenutniZaposleni);
+  }
+});
+
+// ---------- OBRAZAC 6 (generisanje .docx iz stvarnih podataka) ----------
+
+els.obrazac6GenerisiBtn.addEventListener('click', async () => {
+  if (!trenutniZaposleni) return;
+  els.obrazac6GenError.classList.add('hidden');
+
+  const razlogObuke = els.obrazac6RazlogInput.value.trim();
+  if (!razlogObuke) {
+    els.obrazac6GenError.textContent = 'Unesi slučaj/razlog obuke.';
+    els.obrazac6GenError.classList.remove('hidden');
+    return;
+  }
+
+  els.obrazac6GenerisiBtn.disabled = true;
+  const originalLabel = els.obrazac6GenerisiBtn.textContent;
+  els.obrazac6GenerisiBtn.textContent = 'Generišem...';
+
+  try {
+    const { data: rmRow, error: rmError } = await supabaseClient
+      .schema('bzr')
+      .from('radna_mesta_rizik')
+      .select('opis_posla, lzo_lista, opasnosti, mere')
+      .eq('sifra_radnog_mesta', trenutniZaposleni.sifra_radnog_mesta)
+      .eq('aktivan', true)
+      .maybeSingle();
+
+    if (rmError) throw new Error('Greška pri čitanju kataloga radnih mesta: ' + rmError.message);
+
+    if (!rmRow || !rmRow.opis_posla) {
+      throw new Error(
+        `Za radno mesto "${trenutniZaposleni.radno_mesto || ''}" još nisu popunjeni opis posla / LZO / ` +
+        'opasnosti / mere u katalogu (tabela radna_mesta_rizik). Dopuni ih pa pokušaj ponovo.'
+      );
+    }
+
+    const resp = await fetch('templates/obrazac6-template.docx');
+    if (!resp.ok) throw new Error('Ne mogu da učitam šablon Obrasca 6 (templates/obrazac6-template.docx).');
+    const templateBuf = await resp.arrayBuffer();
+
+    const zip = new window.PizZip(templateBuf);
+    const doc = new window.Docxtemplater(zip, { paragraphLoop: true, linebreaks: true });
+
+    const danas = formatDatumSrpski(new Date());
+
+    doc.render({
+      ime_prezime: trenutniZaposleni.prezime_ime || '',
+      radno_mesto: trenutniZaposleni.radno_mesto || '',
+      opis_posla: rmRow.opis_posla || '',
+      razlog_obuke: razlogObuke,
+      datum_obuke_teor: danas,
+      datum_obuke_prakt: danas,
+      datum_provere_teor: danas,
+      datum_provere_prakt: danas,
+      lzo_lista: rmRow.lzo_lista || '',
+      datum_lzo: danas,
+      opasnosti: rmRow.opasnosti || '',
+      mere: rmRow.mere || '',
+      obavestenja:
+        `Upoznat sa Aktom o proceni rizika za radno mesto ${trenutniZaposleni.radno_mesto || ''} ` +
+        'i internim uputstvima poslodavca o bezbednosti i zdravlju na radu.',
+    });
+
+    const blob = doc.getZip().generate({
+      type: 'blob',
+      mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    });
+
+    const bezbedno = (trenutniZaposleni.prezime_ime || 'zaposleni').replace(/[^\p{L}\p{N}]+/gu, '_');
+    const nazivFajla = `Obrazac6_${bezbedno}_${new Date().toISOString().slice(0, 10)}.docx`;
+    triggerDownload(blob, nazivFajla);
+  } catch (err) {
+    let msg = err && err.message ? err.message : String(err);
+    if (err && err.properties && Array.isArray(err.properties.errors) && err.properties.errors.length) {
+      msg = err.properties.errors
+        .map((e) => (e.properties && e.properties.explanation) || e.message)
+        .join('; ');
+    }
+    els.obrazac6GenError.textContent = 'Greška: ' + msg;
+    els.obrazac6GenError.classList.remove('hidden');
+  } finally {
+    els.obrazac6GenerisiBtn.disabled = false;
+    els.obrazac6GenerisiBtn.textContent = originalLabel;
   }
 });
 

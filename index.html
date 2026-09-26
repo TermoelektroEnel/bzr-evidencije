@@ -3,16 +3,23 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>BZR Evidencije — Termoelektro Enel</title>
+<title>BZR Portal — Termoelektro Enel</title>
 <link rel="stylesheet" href="style.css" />
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="vendor/docx-bundle.js"></script>
 </head>
 <body>
 
 <header class="app-header">
-  <h1>BZR Evidencije</h1>
+  <h1>BZR Portal — Termoelektro Enel</h1>
   <button id="logout-btn" class="hidden">Odjava</button>
 </header>
+
+<nav id="portal-nav" class="portal-nav hidden">
+  <button type="button" class="nav-tab active" data-modul="zaposleni">Zaposleni</button>
+  <button type="button" class="nav-tab" data-modul="oprema">Oprema za rad</button>
+  <button type="button" class="nav-tab" data-modul="povrede">Povrede na radu</button>
+</nav>
 
 <main>
 
@@ -27,138 +34,170 @@
     <div class="error-msg hidden" id="login-error"></div>
   </section>
 
-  <!-- LISTA ZAPOSLENIH -->
-  <section id="zaposleni-view" class="panel hidden">
-    <h2>Zaposleni</h2>
-    <table id="zaposleni-table">
-      <thead>
-        <tr>
-          <th>Mat. br.</th>
-          <th>Ime i prezime</th>
-          <th>Radno mesto</th>
-          <th>Radna jedinica</th>
-          <th>Rizik</th>
-          <th>Semafor</th>
-          <th>Status</th>
-        </tr>
-        <tr class="filter-row">
-          <th><input type="text" id="filter-matbr" placeholder="filter..." /></th>
-          <th><input type="text" id="filter-ime" placeholder="filter..." /></th>
-          <th><input type="text" id="filter-radno-mesto" placeholder="filter..." /></th>
-          <th><input type="text" id="filter-radna-jedinica" placeholder="filter..." /></th>
-          <th>
-            <select id="filter-rizik">
-              <option value="">svi</option>
-              <option value="da">povećan rizik</option>
-              <option value="ne">nije povećan rizik</option>
-            </select>
-          </th>
-          <th>
-            <select id="filter-semafor">
-              <option value="">svi</option>
-              <option value="red">crveni (isteklo / nema pregled)</option>
-              <option value="orange">narandžasti (ističe uskoro)</option>
-              <option value="green">zeleni (važi)</option>
-              <option value="none">bez semafora (nije povećan rizik)</option>
-            </select>
-          </th>
-          <th>
-            <select id="filter-status">
-              <option value="">svi</option>
-              <option value="aktivan">aktivan</option>
-              <option value="neaktivan">neaktivan</option>
-            </select>
-          </th>
-        </tr>
-      </thead>
-      <tbody id="zaposleni-tbody"></tbody>
-    </table>
-    <p class="info-msg" id="zaposleni-info"></p>
+  <!-- MODUL: ZAPOSLENI -->
+  <div id="modul-zaposleni" class="hidden">
+
+    <!-- LISTA ZAPOSLENIH -->
+    <section id="zaposleni-view" class="panel hidden">
+      <div class="panel-header-row">
+        <h2>Zaposleni</h2>
+        <button type="button" class="secondary" id="obrazac1-btn">Štampaj Obrazac 1</button>
+      </div>
+      <table id="zaposleni-table">
+        <thead>
+          <tr>
+            <th>Mat. br.</th>
+            <th>Ime i prezime</th>
+            <th>Radno mesto</th>
+            <th>Radna jedinica</th>
+            <th>Rizik</th>
+            <th>Semafor</th>
+            <th>Status</th>
+          </tr>
+          <tr class="filter-row">
+            <th><input type="text" id="filter-matbr" placeholder="filter..." /></th>
+            <th><input type="text" id="filter-ime" placeholder="filter..." /></th>
+            <th><input type="text" id="filter-radno-mesto" placeholder="filter..." /></th>
+            <th><input type="text" id="filter-radna-jedinica" placeholder="filter..." /></th>
+            <th>
+              <select id="filter-rizik">
+                <option value="">svi</option>
+                <option value="da">povećan rizik</option>
+                <option value="ne">nije povećan rizik</option>
+              </select>
+            </th>
+            <th>
+              <select id="filter-semafor">
+                <option value="">svi</option>
+                <option value="red">crveni (isteklo / nema pregled)</option>
+                <option value="orange">narandžasti (ističe uskoro)</option>
+                <option value="green">zeleni (važi)</option>
+                <option value="none">bez semafora (nije povećan rizik)</option>
+              </select>
+            </th>
+            <th>
+              <select id="filter-status">
+                <option value="">svi</option>
+                <option value="aktivan">aktivan</option>
+                <option value="neaktivan">neaktivan</option>
+              </select>
+            </th>
+          </tr>
+        </thead>
+        <tbody id="zaposleni-tbody"></tbody>
+      </table>
+      <p class="info-msg" id="zaposleni-info"></p>
+    </section>
+
+    <!-- DETALJI ZAPOSLENOG -->
+    <section id="detail-view" class="panel hidden">
+      <span class="back-link" id="back-to-list">&larr; Nazad na listu</span>
+      <h2 id="detail-ime"></h2>
+      <p class="info-msg" id="detail-meta"></p>
+
+      <h3>Status radnog mesta (povećan rizik)</h3>
+      <p class="info-msg" id="rizik-po-aktu-info"></p>
+      <label for="rizik-override-select">Stvarni status ovog zaposlenog</label>
+      <select id="rizik-override-select">
+        <option value="">Automatski (prema Aktu o proceni rizika)</option>
+        <option value="da">Da — radi na poslovima sa povećanim rizikom</option>
+        <option value="ne">Ne — izuzetak (trenutno ne radi na tim poslovima)</option>
+      </select>
+      <label for="rizik-napomena-input">Napomena / razlog izuzetka</label>
+      <textarea id="rizik-napomena-input" placeholder="npr. lekarska ocena nesposobnosti za rad na visini, privremeni raspored na drugo radno mesto i sl."></textarea>
+      <button type="button" class="primary" id="rizik-save-btn">Sačuvaj status rizika</button>
+      <div class="error-msg hidden" id="rizik-error"></div>
+      <div class="info-msg hidden" id="rizik-saved-msg">Sačuvano.</div>
+
+      <div id="obrazac6-section" class="hidden">
+        <h3>Obrazac 6 — evidencija o obučenosti za BZR i LZO</h3>
+        <label for="obrazac6-razlog-input">Slučaj, odnosno razlog obuke</label>
+        <input type="text" id="obrazac6-razlog-input" placeholder="npr. 09 - periodična obuka zaposlenih" />
+        <button type="button" class="secondary" id="obrazac6-generisi-btn">Generiši Obrazac 6 (.docx)</button>
+        <div class="error-msg hidden" id="obrazac6-gen-error"></div>
+        <p class="info-msg">Opis posla, opasnosti, mere i LZO se automatski popunjavaju iz kataloga radnih mesta sa povećanim rizikom (tabela radna_mesta_rizik). Ako za ovo radno mesto još nisu popunjeni, javiće grešku.</p>
+      </div>
+
+      <h3>Lekarski pregledi</h3>
+      <div id="pregledi-list"></div>
+
+      <h3>Novi lekarski pregled</h3>
+      <form id="novi-pregled-form">
+        <label for="vrsta-pregleda">Vrsta pregleda</label>
+        <select id="vrsta-pregleda" required>
+          <option value="prethodni">Prethodni</option>
+          <option value="periodicni">Periodični</option>
+          <option value="vanredni">Vanredni</option>
+        </select>
+
+        <label for="datum-pregleda">Datum pregleda</label>
+        <input type="date" id="datum-pregleda" required />
+
+        <label for="rezultat">Rezultat</label>
+        <select id="rezultat" required>
+          <option value="sposoban">Sposoban</option>
+          <option value="sposoban pod uslovima">Sposoban pod uslovima</option>
+          <option value="nesposoban">Nesposoban</option>
+        </select>
+
+        <label for="ustanova">Zdravstvena ustanova</label>
+        <input type="text" id="ustanova" />
+
+        <label for="broj-uverenja">Broj uverenja</label>
+        <input type="text" id="broj-uverenja" />
+
+        <label for="vazi-do">Važi do</label>
+        <input type="date" id="vazi-do" />
+
+        <label for="napomena">Napomena</label>
+        <textarea id="napomena"></textarea>
+
+        <label for="folder-izvestaji">Folder sa izveštajima o lekarskim pregledima (podesi jednom)</label>
+        <input type="text" id="folder-izvestaji" placeholder="npr. C:\BZR\izvestaji" />
+        <label>Izveštaj o lekarskom pregledu (PDF)</label>
+        <div class="file-picker-row">
+          <button type="button" class="secondary" id="izvestaj-browse-btn">Izaberi fajl...</button>
+          <input type="file" id="izvestaj-file" accept=".pdf" class="hidden" />
+          <span class="info-msg" id="izvestaj-filename">Nije izabran fajl</span>
+          <a href="#" id="izvestaj-test-link" class="hidden" target="_blank" rel="noopener">Otvori</a>
+          <button type="button" class="secondary hidden" id="izvestaj-copy-btn">Kopiraj putanju</button>
+        </div>
+
+        <label for="folder-obrazac6">Folder sa Obrascem br. 6 (podesi jednom)</label>
+        <input type="text" id="folder-obrazac6" placeholder="npr. C:\BZR\obrazac6" />
+        <label>Obrazac br. 6</label>
+        <div class="file-picker-row">
+          <button type="button" class="secondary" id="obrazac6-browse-btn">Izaberi fajl...</button>
+          <input type="file" id="obrazac6-file" class="hidden" />
+          <span class="info-msg" id="obrazac6-filename">Nije izabran fajl</span>
+          <a href="#" id="obrazac6-test-link" class="hidden" target="_blank" rel="noopener">Otvori</a>
+          <button type="button" class="secondary hidden" id="obrazac6-copy-btn">Kopiraj putanju</button>
+        </div>
+        <p class="info-msg">Napomena: iz bezbednosnih razloga browser ponekad neće sam da otvori fajl sa diska. Ako klik na "Otvori" ne uradi ništa, klikni "Kopiraj putanju" i nalepi (Ctrl+V) u Windows Explorer ili u prozor "Run" (Win+R).</p>
+
+        <button type="submit" class="primary">Sačuvaj pregled</button>
+        <div class="error-msg hidden" id="pregled-error"></div>
+      </form>
+    </section>
+
+  </div>
+
+  <!-- MODUL: OPREMA ZA RAD -->
+  <section id="modul-oprema" class="panel hidden">
+    <h2>Oprema za rad</h2>
+    <p class="info-msg">Ovaj modul je u pripremi. Pratiće evidenciju opreme za rad i njenih periodičnih pregleda/provera — osnova za Obrazac 8 (Pravilnik o evidencijama BZR, "Sl. glasnik RS" 5/2025 i izmene).</p>
   </section>
 
-  <!-- DETALJI ZAPOSLENOG -->
-  <section id="detail-view" class="panel hidden">
-    <span class="back-link" id="back-to-list">&larr; Nazad na listu</span>
-    <h2 id="detail-ime"></h2>
-    <p class="info-msg" id="detail-meta"></p>
-
-    <h3>Status radnog mesta (povećan rizik)</h3>
-    <p class="info-msg" id="rizik-po-aktu-info"></p>
-    <label for="rizik-override-select">Stvarni status ovog zaposlenog</label>
-    <select id="rizik-override-select">
-      <option value="">Automatski (prema Aktu o proceni rizika)</option>
-      <option value="da">Da — radi na poslovima sa povećanim rizikom</option>
-      <option value="ne">Ne — izuzetak (trenutno ne radi na tim poslovima)</option>
-    </select>
-    <label for="rizik-napomena-input">Napomena / razlog izuzetka</label>
-    <textarea id="rizik-napomena-input" placeholder="npr. lekarska ocena nesposobnosti za rad na visini, privremeni raspored na drugo radno mesto i sl."></textarea>
-    <button type="button" class="primary" id="rizik-save-btn">Sačuvaj status rizika</button>
-    <div class="error-msg hidden" id="rizik-error"></div>
-    <div class="info-msg hidden" id="rizik-saved-msg">Sačuvano.</div>
-
-    <h3>Lekarski pregledi</h3>
-    <div id="pregledi-list"></div>
-
-    <h3>Novi lekarski pregled</h3>
-    <form id="novi-pregled-form">
-      <label for="vrsta-pregleda">Vrsta pregleda</label>
-      <select id="vrsta-pregleda" required>
-        <option value="prethodni">Prethodni</option>
-        <option value="periodicni">Periodični</option>
-        <option value="vanredni">Vanredni</option>
-      </select>
-
-      <label for="datum-pregleda">Datum pregleda</label>
-      <input type="date" id="datum-pregleda" required />
-
-      <label for="rezultat">Rezultat</label>
-      <select id="rezultat" required>
-        <option value="sposoban">Sposoban</option>
-        <option value="sposoban pod uslovima">Sposoban pod uslovima</option>
-        <option value="nesposoban">Nesposoban</option>
-      </select>
-
-      <label for="ustanova">Zdravstvena ustanova</label>
-      <input type="text" id="ustanova" />
-
-      <label for="broj-uverenja">Broj uverenja</label>
-      <input type="text" id="broj-uverenja" />
-
-      <label for="vazi-do">Važi do</label>
-      <input type="date" id="vazi-do" />
-
-      <label for="napomena">Napomena</label>
-      <textarea id="napomena"></textarea>
-
-      <label for="folder-izvestaji">Folder sa izveštajima o lekarskim pregledima (podesi jednom)</label>
-      <input type="text" id="folder-izvestaji" placeholder="npr. C:\BZR\izvestaji" />
-      <label>Izveštaj o lekarskom pregledu (PDF)</label>
-      <div class="file-picker-row">
-        <button type="button" class="secondary" id="izvestaj-browse-btn">Izaberi fajl...</button>
-        <input type="file" id="izvestaj-file" accept=".pdf" class="hidden" />
-        <span class="info-msg" id="izvestaj-filename">Nije izabran fajl</span>
-        <a href="#" id="izvestaj-test-link" class="hidden" target="_blank" rel="noopener">Otvori</a>
-        <button type="button" class="secondary hidden" id="izvestaj-copy-btn">Kopiraj putanju</button>
-      </div>
-
-      <label for="folder-obrazac6">Folder sa Obrascem br. 6 (podesi jednom)</label>
-      <input type="text" id="folder-obrazac6" placeholder="npr. C:\BZR\obrazac6" />
-      <label>Obrazac br. 6</label>
-      <div class="file-picker-row">
-        <button type="button" class="secondary" id="obrazac6-browse-btn">Izaberi fajl...</button>
-        <input type="file" id="obrazac6-file" class="hidden" />
-        <span class="info-msg" id="obrazac6-filename">Nije izabran fajl</span>
-        <a href="#" id="obrazac6-test-link" class="hidden" target="_blank" rel="noopener">Otvori</a>
-        <button type="button" class="secondary hidden" id="obrazac6-copy-btn">Kopiraj putanju</button>
-      </div>
-      <p class="info-msg">Napomena: iz bezbednosnih razloga browser ponekad neće sam da otvori fajl sa diska. Ako klik na "Otvori" ne uradi ništa, klikni "Kopiraj putanju" i nalepi (Ctrl+V) u Windows Explorer ili u prozor "Run" (Win+R).</p>
-
-      <button type="submit" class="primary">Sačuvaj pregled</button>
-      <div class="error-msg hidden" id="pregled-error"></div>
-    </form>
+  <!-- MODUL: POVREDE NA RADU -->
+  <section id="modul-povrede" class="panel hidden">
+    <h2>Povrede na radu</h2>
+    <p class="info-msg">Ovaj modul je u pripremi. Pratiće evidenciju povreda na radu — osnova za Obrazac 2 (Pravilnik o evidencijama BZR, "Sl. glasnik RS" 5/2025 i izmene).</p>
   </section>
 
 </main>
+
+<!-- Skriveni print-only sadržaj za Obrazac 1 (register radnih mesta sa povećanim rizikom) -->
+<div id="obrazac1-print"></div>
 
 <script src="config.js"></script>
 <script src="app.js"></script>
