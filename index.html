@@ -183,10 +183,122 @@
   </div>
 
   <!-- MODUL: OPREMA ZA RAD -->
-  <section id="modul-oprema" class="panel hidden">
-    <h2>Oprema za rad</h2>
-    <p class="info-msg">Ovaj modul je u pripremi. Pratiće evidenciju opreme za rad i njenih periodičnih pregleda/provera — osnova za Obrazac 8 (Pravilnik o evidencijama BZR, "Sl. glasnik RS" 5/2025 i izmene).</p>
-  </section>
+  <div id="modul-oprema" class="hidden">
+
+    <!-- LISTA OPREME -->
+    <section id="oprema-list-view" class="panel hidden">
+      <div class="panel-header-row">
+        <h2>Oprema za rad</h2>
+        <div>
+          <button type="button" class="secondary" id="oprema-novi-btn">+ Dodaj opremu</button>
+          <button type="button" class="secondary" id="obrazac8-btn">Generiši Obrazac 8 (.docx)</button>
+        </div>
+      </div>
+
+      <!-- FORMA ZA NOVU OPREMU (skrivena dok se ne klikne "+ Dodaj opremu") -->
+      <form id="oprema-novi-form" class="hidden" style="margin-bottom: 18px; border: 1px solid var(--border); border-radius: var(--radius); padding: 14px;">
+        <h3 style="margin-top:0;">Nova oprema</h3>
+        <label for="oprema-vrsta-input">Vrsta opreme</label>
+        <input type="text" id="oprema-vrsta-input" required placeholder="npr. Kran toranjski" />
+        <label for="oprema-fabricki-input">Fabrički broj</label>
+        <input type="text" id="oprema-fabricki-input" />
+        <label for="oprema-godina-input">Godina proizvodnje</label>
+        <input type="number" id="oprema-godina-input" min="1900" max="2100" />
+        <label for="oprema-lokacija-input">Lokacija</label>
+        <input type="text" id="oprema-lokacija-input" />
+        <label for="oprema-namena-input">Namena</label>
+        <input type="text" id="oprema-namena-input" />
+        <button type="submit" class="primary">Sačuvaj opremu</button>
+        <button type="button" class="secondary" id="oprema-novi-otkazi-btn">Otkaži</button>
+        <div class="error-msg hidden" id="oprema-novi-error"></div>
+      </form>
+
+      <table id="oprema-table">
+        <thead>
+          <tr>
+            <th>Vrsta</th>
+            <th>Fabrički broj</th>
+            <th>God. proizv.</th>
+            <th>Lokacija</th>
+            <th>Namena</th>
+            <th>Semafor</th>
+            <th>Status</th>
+          </tr>
+          <tr class="filter-row">
+            <th><input type="text" id="oprema-filter-vrsta" placeholder="filter..." /></th>
+            <th><input type="text" id="oprema-filter-fabricki" placeholder="filter..." /></th>
+            <th></th>
+            <th><input type="text" id="oprema-filter-lokacija" placeholder="filter..." /></th>
+            <th></th>
+            <th>
+              <select id="oprema-filter-semafor">
+                <option value="">svi</option>
+                <option value="red">crveni (isteklo / nema pregled)</option>
+                <option value="orange">narandžasti (ističe uskoro)</option>
+                <option value="green">zeleni (važi)</option>
+              </select>
+            </th>
+            <th>
+              <select id="oprema-filter-status">
+                <option value="">svi</option>
+                <option value="aktivna">aktivna</option>
+                <option value="neaktivna">neaktivna</option>
+              </select>
+            </th>
+          </tr>
+        </thead>
+        <tbody id="oprema-tbody"></tbody>
+      </table>
+      <p class="info-msg" id="oprema-info"></p>
+    </section>
+
+    <!-- DETALJI OPREME -->
+    <section id="oprema-detail-view" class="panel hidden">
+      <span class="back-link" id="oprema-back-to-list">&larr; Nazad na listu</span>
+      <h2 id="oprema-detail-naslov"></h2>
+
+      <h3>Podaci o opremi</h3>
+      <label for="oprema-edit-vrsta">Vrsta opreme</label>
+      <input type="text" id="oprema-edit-vrsta" required />
+      <label for="oprema-edit-fabricki">Fabrički broj</label>
+      <input type="text" id="oprema-edit-fabricki" />
+      <label for="oprema-edit-godina">Godina proizvodnje</label>
+      <input type="number" id="oprema-edit-godina" min="1900" max="2100" />
+      <label for="oprema-edit-lokacija">Lokacija</label>
+      <input type="text" id="oprema-edit-lokacija" />
+      <label for="oprema-edit-namena">Namena</label>
+      <input type="text" id="oprema-edit-namena" />
+      <label for="oprema-edit-aktivna">
+        <input type="checkbox" id="oprema-edit-aktivna" style="width:auto; display:inline-block; vertical-align:middle;" />
+        Oprema je aktivna (u upotrebi)
+      </label>
+      <button type="button" class="primary" id="oprema-sacuvaj-btn">Sačuvaj izmene</button>
+      <button type="button" class="danger-link" id="oprema-obrisi-btn">Obriši opremu</button>
+      <div class="error-msg hidden" id="oprema-edit-error"></div>
+
+      <h3>Istorija pregleda i provera</h3>
+      <div id="oprema-pregledi-list"></div>
+
+      <h3>Novi pregled / provera</h3>
+      <form id="oprema-novi-pregled-form">
+        <label for="oprema-pregled-broj">Broj stručnog nalaza</label>
+        <input type="text" id="oprema-pregled-broj" />
+
+        <label for="oprema-pregled-datum">Datum pregleda, odnosno provere</label>
+        <input type="date" id="oprema-pregled-datum" required />
+
+        <label for="oprema-pregled-sledeci">Datum sledećeg pregleda, odnosno provere</label>
+        <input type="date" id="oprema-pregled-sledeci" />
+
+        <label for="oprema-pregled-napomena">Napomena</label>
+        <textarea id="oprema-pregled-napomena"></textarea>
+
+        <button type="submit" class="primary">Sačuvaj pregled</button>
+        <div class="error-msg hidden" id="oprema-pregled-error"></div>
+      </form>
+    </section>
+
+  </div>
 
   <!-- MODUL: POVREDE NA RADU -->
   <section id="modul-povrede" class="panel hidden">

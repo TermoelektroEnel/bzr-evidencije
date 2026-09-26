@@ -57,6 +57,45 @@ const els = {
   obrazac6RazlogInput: document.getElementById('obrazac6-razlog-input'),
   obrazac6GenerisiBtn: document.getElementById('obrazac6-generisi-btn'),
   obrazac6GenError: document.getElementById('obrazac6-gen-error'),
+
+  // Oprema za rad
+  opremaListView: document.getElementById('oprema-list-view'),
+  opremaDetailView: document.getElementById('oprema-detail-view'),
+  opremaNoviBtn: document.getElementById('oprema-novi-btn'),
+  obrazac8Btn: document.getElementById('obrazac8-btn'),
+  opremaNoviForm: document.getElementById('oprema-novi-form'),
+  opremaVrstaInput: document.getElementById('oprema-vrsta-input'),
+  opremaFabrickiInput: document.getElementById('oprema-fabricki-input'),
+  opremaGodinaInput: document.getElementById('oprema-godina-input'),
+  opremaLokacijaInput: document.getElementById('oprema-lokacija-input'),
+  opremaNamenaInput: document.getElementById('oprema-namena-input'),
+  opremaNoviOtkaziBtn: document.getElementById('oprema-novi-otkazi-btn'),
+  opremaNoviError: document.getElementById('oprema-novi-error'),
+  opremaTbody: document.getElementById('oprema-tbody'),
+  opremaInfo: document.getElementById('oprema-info'),
+  opremaFilterVrsta: document.getElementById('oprema-filter-vrsta'),
+  opremaFilterFabricki: document.getElementById('oprema-filter-fabricki'),
+  opremaFilterLokacija: document.getElementById('oprema-filter-lokacija'),
+  opremaFilterSemafor: document.getElementById('oprema-filter-semafor'),
+  opremaFilterStatus: document.getElementById('oprema-filter-status'),
+  opremaBackToList: document.getElementById('oprema-back-to-list'),
+  opremaDetailNaslov: document.getElementById('oprema-detail-naslov'),
+  opremaEditVrsta: document.getElementById('oprema-edit-vrsta'),
+  opremaEditFabricki: document.getElementById('oprema-edit-fabricki'),
+  opremaEditGodina: document.getElementById('oprema-edit-godina'),
+  opremaEditLokacija: document.getElementById('oprema-edit-lokacija'),
+  opremaEditNamena: document.getElementById('oprema-edit-namena'),
+  opremaEditAktivna: document.getElementById('oprema-edit-aktivna'),
+  opremaSacuvajBtn: document.getElementById('oprema-sacuvaj-btn'),
+  opremaObrisiBtn: document.getElementById('oprema-obrisi-btn'),
+  opremaEditError: document.getElementById('oprema-edit-error'),
+  opremaPregrediList: document.getElementById('oprema-pregledi-list'),
+  opremaNoviPregledForm: document.getElementById('oprema-novi-pregled-form'),
+  opremaPregledBroj: document.getElementById('oprema-pregled-broj'),
+  opremaPregledDatum: document.getElementById('oprema-pregled-datum'),
+  opremaPregledSledeci: document.getElementById('oprema-pregled-sledeci'),
+  opremaPregledNapomena: document.getElementById('oprema-pregled-napomena'),
+  opremaPregledError: document.getElementById('oprema-pregled-error'),
 };
 
 let trenutniIzvestajUrl = null;
@@ -220,6 +259,13 @@ function showView(view) {
   view.classList.remove('hidden');
 }
 
+// Prebacuje između liste opreme i detalja opreme unutar modula Oprema za rad
+function showOpremaView(view) {
+  els.opremaListView.classList.add('hidden');
+  els.opremaDetailView.classList.add('hidden');
+  view.classList.remove('hidden');
+}
+
 // ---------- PORTAL (navigacija između modula) ----------
 
 function showLogin() {
@@ -240,6 +286,10 @@ function switchModul(name) {
   });
   if (name === 'zaposleni') {
     showView(els.zaposleniView);
+  }
+  if (name === 'oprema') {
+    showOpremaView(els.opremaListView);
+    loadOprema();
   }
 }
 
@@ -790,6 +840,366 @@ els.noviPregledForm.addEventListener('submit', async (e) => {
   await loadZaposleni();
   showView(els.zaposleniView);
 });
+
+// ---------- OPREMA ZA RAD (Obrazac 8) ----------
+
+let opremaCache = [];
+let trenutnaOprema = null;
+
+function formatOpisOpreme(o) {
+  const parts = [];
+  if (o.vrsta) parts.push(o.vrsta);
+  if (o.fabricki_broj) parts.push(`fabr. br. ${o.fabricki_broj}`);
+  if (o.godina_proizvodnje) parts.push(`god. proizv. ${o.godina_proizvodnje}`);
+  if (o.lokacija) parts.push(`lokacija: ${o.lokacija}`);
+  if (o.namena) parts.push(`namena: ${o.namena}`);
+  return parts.join(', ');
+}
+
+function computeOpremaStatus(o) {
+  if (!o.poslednji_pregled_sledeci) {
+    return { color: 'red', label: 'Nema evidentiran pregled/proveru' };
+  }
+  const danas = new Date();
+  danas.setHours(0, 0, 0, 0);
+  const sledeci = new Date(o.poslednji_pregled_sledeci);
+  const diffDays = Math.round((sledeci - danas) / (1000 * 60 * 60 * 24));
+  if (diffDays < 0) return { color: 'red', label: `Istekao pre ${Math.abs(diffDays)} dan(a)` };
+  if (diffDays <= 15) return { color: 'orange', label: `Ističe za ${diffDays} dan(a)` };
+  return { color: 'green', label: `Važi do ${o.poslednji_pregled_sledeci}` };
+}
+
+async function loadOprema() {
+  els.opremaInfo.textContent = 'Učitavanje...';
+  const { data, error } = await supabaseClient
+    .schema('bzr')
+    .from('v_oprema_status')
+    .select('*')
+    .order('vrsta', { ascending: true });
+
+  if (error) {
+    els.opremaInfo.textContent = 'Greška pri učitavanju: ' + error.message;
+    return;
+  }
+
+  opremaCache = data || [];
+  els.opremaInfo.textContent = `Ukupno: ${opremaCache.length}`;
+  applyOpremaFilters();
+}
+
+function renderOpremaTable(list) {
+  els.opremaInfo.textContent = `Prikazano: ${list.length} od ${opremaCache.length}`;
+  els.opremaTbody.innerHTML = '';
+  list.forEach((o) => {
+    const tr = document.createElement('tr');
+    tr.className = 'row-clickable';
+    const status = computeOpremaStatus(o);
+    const dotHtml = `<span class="rizik-dot rizik-dot-${status.color}" title="${escapeAttr(status.label)}"></span>`;
+    tr.innerHTML = `
+      <td>${dotHtml}${escapeHtml(o.vrsta || '')}</td>
+      <td>${escapeHtml(o.fabricki_broj || '')}</td>
+      <td>${o.godina_proizvodnje || ''}</td>
+      <td>${escapeHtml(o.lokacija || '')}</td>
+      <td>${escapeHtml(o.namena || '')}</td>
+      <td>${status.label}</td>
+      <td><span class="badge">${o.aktivna ? 'aktivna' : 'neaktivna'}</span></td>
+    `;
+    tr.addEventListener('click', () => openOpremaDetail(o.id));
+    els.opremaTbody.appendChild(tr);
+  });
+}
+
+function applyOpremaFilters() {
+  const vrsta = els.opremaFilterVrsta.value.trim().toLowerCase();
+  const fabricki = els.opremaFilterFabricki.value.trim().toLowerCase();
+  const lokacija = els.opremaFilterLokacija.value.trim().toLowerCase();
+  const semafor = els.opremaFilterSemafor.value;
+  const status = els.opremaFilterStatus.value;
+
+  const filtered = opremaCache.filter((o) => {
+    if (vrsta && !(o.vrsta || '').toLowerCase().includes(vrsta)) return false;
+    if (fabricki && !(o.fabricki_broj || '').toLowerCase().includes(fabricki)) return false;
+    if (lokacija && !(o.lokacija || '').toLowerCase().includes(lokacija)) return false;
+    if (semafor) {
+      const s = computeOpremaStatus(o);
+      if (s.color !== semafor) return false;
+    }
+    if (status === 'aktivna' && !o.aktivna) return false;
+    if (status === 'neaktivna' && o.aktivna) return false;
+    return true;
+  });
+
+  renderOpremaTable(filtered);
+}
+
+[els.opremaFilterVrsta, els.opremaFilterFabricki, els.opremaFilterLokacija].forEach((el) => {
+  el.addEventListener('input', applyOpremaFilters);
+});
+[els.opremaFilterSemafor, els.opremaFilterStatus].forEach((el) => {
+  el.addEventListener('change', applyOpremaFilters);
+});
+
+els.opremaBackToList.addEventListener('click', () => {
+  showOpremaView(els.opremaListView);
+});
+
+// ---- Nova oprema ----
+
+els.opremaNoviBtn.addEventListener('click', () => {
+  els.opremaNoviForm.classList.remove('hidden');
+  els.opremaNoviError.classList.add('hidden');
+});
+
+els.opremaNoviOtkaziBtn.addEventListener('click', () => {
+  els.opremaNoviForm.classList.add('hidden');
+  els.opremaNoviForm.reset();
+});
+
+els.opremaNoviForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  els.opremaNoviError.classList.add('hidden');
+
+  const payload = {
+    vrsta: els.opremaVrstaInput.value.trim(),
+    fabricki_broj: els.opremaFabrickiInput.value.trim() || null,
+    godina_proizvodnje: els.opremaGodinaInput.value ? Number(els.opremaGodinaInput.value) : null,
+    lokacija: els.opremaLokacijaInput.value.trim() || null,
+    namena: els.opremaNamenaInput.value.trim() || null,
+  };
+
+  const { error } = await supabaseClient.schema('bzr').from('oprema_za_rad').insert(payload);
+
+  if (error) {
+    els.opremaNoviError.textContent = 'Greška pri čuvanju: ' + error.message;
+    els.opremaNoviError.classList.remove('hidden');
+    return;
+  }
+
+  els.opremaNoviForm.reset();
+  els.opremaNoviForm.classList.add('hidden');
+  await loadOprema();
+});
+
+// ---- Detalji opreme ----
+
+async function openOpremaDetail(id) {
+  trenutnaOprema = opremaCache.find((o) => o.id === id);
+  if (!trenutnaOprema) return;
+
+  els.opremaDetailNaslov.textContent = trenutnaOprema.vrsta || '(bez naziva)';
+  els.opremaEditVrsta.value = trenutnaOprema.vrsta || '';
+  els.opremaEditFabricki.value = trenutnaOprema.fabricki_broj || '';
+  els.opremaEditGodina.value = trenutnaOprema.godina_proizvodnje || '';
+  els.opremaEditLokacija.value = trenutnaOprema.lokacija || '';
+  els.opremaEditNamena.value = trenutnaOprema.namena || '';
+  els.opremaEditAktivna.checked = !!trenutnaOprema.aktivna;
+  els.opremaEditError.classList.add('hidden');
+
+  showOpremaView(els.opremaDetailView);
+  await loadOpremaPregledi(id);
+}
+
+els.opremaSacuvajBtn.addEventListener('click', async () => {
+  els.opremaEditError.classList.add('hidden');
+  if (!trenutnaOprema) return;
+
+  const payload = {
+    vrsta: els.opremaEditVrsta.value.trim(),
+    fabricki_broj: els.opremaEditFabricki.value.trim() || null,
+    godina_proizvodnje: els.opremaEditGodina.value ? Number(els.opremaEditGodina.value) : null,
+    lokacija: els.opremaEditLokacija.value.trim() || null,
+    namena: els.opremaEditNamena.value.trim() || null,
+    aktivna: els.opremaEditAktivna.checked,
+  };
+
+  const { error } = await supabaseClient.schema('bzr').from('oprema_za_rad').update(payload).eq('id', trenutnaOprema.id);
+
+  if (error) {
+    els.opremaEditError.textContent = 'Greška pri čuvanju: ' + error.message;
+    els.opremaEditError.classList.remove('hidden');
+    return;
+  }
+
+  await loadOprema();
+  showOpremaView(els.opremaListView);
+});
+
+els.opremaObrisiBtn.addEventListener('click', async () => {
+  if (!trenutnaOprema) return;
+  if (!confirm(`Da li sigurno želiš da obrišeš opremu "${trenutnaOprema.vrsta}" i celu istoriju njenih pregleda? Ovo se ne može poništiti.`)) {
+    return;
+  }
+
+  els.opremaObrisiBtn.disabled = true;
+  const { error } = await supabaseClient.schema('bzr').from('oprema_za_rad').delete().eq('id', trenutnaOprema.id);
+  els.opremaObrisiBtn.disabled = false;
+
+  if (error) {
+    els.opremaEditError.textContent = 'Greška pri brisanju: ' + error.message;
+    els.opremaEditError.classList.remove('hidden');
+    return;
+  }
+
+  await loadOprema();
+  showOpremaView(els.opremaListView);
+});
+
+// ---- Istorija pregleda opreme ----
+
+async function loadOpremaPregledi(opremaId) {
+  els.opremaPregrediList.innerHTML = 'Učitavanje...';
+  const { data, error } = await supabaseClient
+    .schema('bzr')
+    .from('pregledi_opreme')
+    .select('*')
+    .eq('oprema_id', opremaId)
+    .order('datum_pregleda', { ascending: false });
+
+  if (error) {
+    els.opremaPregrediList.innerHTML = `<p class="error-msg">Greška: ${escapeHtml(error.message)}</p>`;
+    return;
+  }
+
+  if (!data || data.length === 0) {
+    els.opremaPregrediList.innerHTML = '<p class="info-msg">Još nema evidentiranih pregleda.</p>';
+    return;
+  }
+
+  els.opremaPregrediList.innerHTML = data.map((p) => `
+    <div class="pregled-item">
+      <div><strong>${escapeHtml(p.datum_pregleda)}</strong>${p.broj_nalaza ? ` — br. nalaza: ${escapeHtml(p.broj_nalaza)}` : ''}</div>
+      ${p.datum_sledeceg ? `<div>Sledeći pregled: ${escapeHtml(p.datum_sledeceg)}</div>` : ''}
+      ${p.napomena ? `<div>Napomena: ${escapeHtml(p.napomena)}</div>` : ''}
+      <div class="pregled-actions">
+        <button type="button" class="danger-link btn-obrisi-opremu-pregled" data-id="${p.id}">Obriši pregled</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+els.opremaPregrediList.addEventListener('click', async (e) => {
+  const btn = e.target.closest('.btn-obrisi-opremu-pregled');
+  if (!btn) return;
+
+  if (!confirm('Da li sigurno želiš da obrišeš ovaj pregled/proveru? Ovo se ne može poništiti.')) {
+    return;
+  }
+
+  btn.disabled = true;
+  const { error } = await supabaseClient.schema('bzr').from('pregledi_opreme').delete().eq('id', btn.dataset.id);
+
+  if (error) {
+    alert('Greška pri brisanju: ' + error.message);
+    btn.disabled = false;
+    return;
+  }
+
+  if (trenutnaOprema) {
+    await loadOpremaPregledi(trenutnaOprema.id);
+  }
+});
+
+els.opremaNoviPregledForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  els.opremaPregledError.classList.add('hidden');
+  if (!trenutnaOprema) return;
+
+  const payload = {
+    oprema_id: trenutnaOprema.id,
+    broj_nalaza: els.opremaPregledBroj.value.trim() || null,
+    datum_pregleda: els.opremaPregledDatum.value,
+    datum_sledeceg: els.opremaPregledSledeci.value || null,
+    napomena: els.opremaPregledNapomena.value.trim() || null,
+  };
+
+  const { error } = await supabaseClient.schema('bzr').from('pregledi_opreme').insert(payload);
+
+  if (error) {
+    els.opremaPregledError.textContent = 'Greška pri čuvanju: ' + error.message;
+    els.opremaPregledError.classList.remove('hidden');
+    return;
+  }
+
+  els.opremaNoviPregledForm.reset();
+
+  // Novi pregled menja semafor status — osveži listu i vrati se na nju.
+  await loadOprema();
+  showOpremaView(els.opremaListView);
+});
+
+// ---- Obrazac 8 (.docx) ----
+
+async function generisiObrazac8() {
+  const aktivna = opremaCache.filter((o) => o.aktivna);
+  if (aktivna.length === 0) {
+    alert('Nema aktivne opreme za Obrazac 8.');
+    return;
+  }
+
+  els.obrazac8Btn.disabled = true;
+  const originalLabel = els.obrazac8Btn.textContent;
+  els.obrazac8Btn.textContent = 'Pripremam...';
+
+  try {
+    const ids = aktivna.map((o) => o.id);
+
+    const { data: pregledi, error: pregErr } = await supabaseClient
+      .schema('bzr')
+      .from('pregledi_opreme')
+      .select('oprema_id, broj_nalaza, datum_pregleda, datum_sledeceg, napomena')
+      .in('oprema_id', ids)
+      .order('datum_pregleda', { ascending: true });
+    if (pregErr) throw pregErr;
+
+    const pregrediPoOpremi = {};
+    (pregledi || []).forEach((p) => {
+      if (!pregrediPoOpremi[p.oprema_id]) pregrediPoOpremi[p.oprema_id] = [];
+      pregrediPoOpremi[p.oprema_id].push(p);
+    });
+
+    const redovi = aktivna
+      .slice()
+      .sort((a, b) => (a.vrsta || '').localeCompare(b.vrsta || ''))
+      .map((o, idx) => {
+        const svi = (pregrediPoOpremi[o.id] || []).slice(-4);
+        const red = {
+          redni_broj: `${idx + 1}.`,
+          opis_opreme: formatOpisOpreme(o),
+        };
+        for (let i = 0; i < 4; i++) {
+          const p = svi[i];
+          red[`broj_${i + 1}`] = (p && p.broj_nalaza) || '';
+          red[`datum_${i + 1}`] = (p && formatDatumIso(p.datum_pregleda)) || '';
+          red[`sledeci_${i + 1}`] = (p && formatDatumIso(p.datum_sledeceg)) || '';
+          red[`napomena_${i + 1}`] = (p && p.napomena) || '';
+        }
+        return red;
+      });
+
+    const resp = await fetch('templates/obrazac8-template.docx');
+    if (!resp.ok) throw new Error('Ne mogu da učitam šablon Obrasca 8 (templates/obrazac8-template.docx).');
+    const templateBuf = await resp.arrayBuffer();
+
+    const zip = new window.PizZip(templateBuf);
+    const doc = new window.Docxtemplater(zip, { paragraphLoop: true, linebreaks: true });
+    doc.render({ oprema: redovi });
+
+    const blob = doc.getZip().generate({
+      type: 'blob',
+      mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    });
+
+    const danasOznaka = formatDatumSrpski(new Date()).replace(/\./g, '-').replace(/-+$/, '');
+    triggerDownload(blob, `Obrazac8_${danasOznaka}.docx`);
+  } catch (err) {
+    alert('Greška pri generisanju Obrasca 8: ' + (err.message || err));
+  } finally {
+    els.obrazac8Btn.disabled = false;
+    els.obrazac8Btn.textContent = originalLabel;
+  }
+}
+
+els.obrazac8Btn.addEventListener('click', generisiObrazac8);
 
 // ---------- START ----------
 
