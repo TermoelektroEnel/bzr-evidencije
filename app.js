@@ -96,6 +96,29 @@ const els = {
   opremaPregledSledeci: document.getElementById('oprema-pregled-sledeci'),
   opremaPregledNapomena: document.getElementById('oprema-pregled-napomena'),
   opremaPregledError: document.getElementById('oprema-pregled-error'),
+
+  // Povrede na radu
+  povredaNoviBtn: document.getElementById('povreda-novi-btn'),
+  obrazac2Btn: document.getElementById('obrazac2-btn'),
+  povredaForm: document.getElementById('povreda-form'),
+  povredaFormNaslov: document.getElementById('povreda-form-naslov'),
+  povredaZaposleniSelect: document.getElementById('povreda-zaposleni-select'),
+  povredaImeInput: document.getElementById('povreda-ime-input'),
+  povredaRadnoMestoInput: document.getElementById('povreda-radno-mesto-input'),
+  povredaDatumInput: document.getElementById('povreda-datum-input'),
+  povredaVremeInput: document.getElementById('povreda-vreme-input'),
+  povredaVrstaSelect: document.getElementById('povreda-vrsta-select'),
+  povredaOcenaSelect: document.getElementById('povreda-ocena-select'),
+  povredaOpisInput: document.getElementById('povreda-opis-input'),
+  povredaOtkaziBtn: document.getElementById('povreda-otkazi-btn'),
+  povredaObrisiBtn: document.getElementById('povreda-obrisi-btn'),
+  povredaFormError: document.getElementById('povreda-form-error'),
+  povredaTbody: document.getElementById('povreda-tbody'),
+  povredaInfo: document.getElementById('povreda-info'),
+  povredaFilterIme: document.getElementById('povreda-filter-ime'),
+  povredaFilterRadnoMesto: document.getElementById('povreda-filter-radno-mesto'),
+  povredaFilterVrsta: document.getElementById('povreda-filter-vrsta'),
+  povredaFilterOcena: document.getElementById('povreda-filter-ocena'),
 };
 
 let trenutniIzvestajUrl = null;
@@ -290,6 +313,10 @@ function switchModul(name) {
   if (name === 'oprema') {
     showOpremaView(els.opremaListView);
     loadOprema();
+  }
+  if (name === 'povrede') {
+    loadPovrede();
+    popuniPovredaZaposleniSelect();
   }
 }
 
@@ -1200,6 +1227,267 @@ async function generisiObrazac8() {
 }
 
 els.obrazac8Btn.addEventListener('click', generisiObrazac8);
+
+// ---------- POVREDE NA RADU (Obrazac 2) ----------
+
+let povredaCache = [];
+let trenutnaPovredaId = null;
+
+const DANI_U_SEDMICI = ['nedelja', 'ponedeljak', 'utorak', 'sreda', 'četvrtak', 'petak', 'subota'];
+
+function danUSedmiciIso(isoStr) {
+  if (!isoStr) return '';
+  const [y, m, d] = String(isoStr).split('-').map(Number);
+  if (!y || !m || !d) return '';
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  return DANI_U_SEDMICI[dt.getUTCDay()];
+}
+
+function formatVremeNastanka(datumPovrede, vremePovrede) {
+  const datumFmt = formatDatumIso(datumPovrede);
+  const dan = danUSedmiciIso(datumPovrede);
+  let out = datumFmt;
+  if (dan) out += ` (${dan})`;
+  if (vremePovrede) out += `, ${vremePovrede}h`;
+  return out.trim();
+}
+
+function tezinaClass(ocena) {
+  if (ocena === 'laka') return 'tezina-laka';
+  if (ocena === 'teška') return 'tezina-teska';
+  if (ocena === 'smrtna') return 'tezina-smrtna';
+  return '';
+}
+
+// Popunjava padajuću listu zaposlenih u formi za povredu (iz već učitanog zaposleniCache
+// — modul Zaposleni se učitava odmah nakon prijave, pre nego što korisnik ovde dođe).
+function popuniPovredaZaposleniSelect() {
+  const trenutna = els.povredaZaposleniSelect.value;
+  els.povredaZaposleniSelect.innerHTML = '<option value="">-- unesi ručno --</option>' +
+    zaposleniCache
+      .slice()
+      .sort((a, b) => (a.prezime_ime || '').localeCompare(b.prezime_ime || ''))
+      .map((z) => `<option value="${escapeAttr(z.mat_br)}">${escapeHtml(z.prezime_ime || z.mat_br)}</option>`)
+      .join('');
+  els.povredaZaposleniSelect.value = trenutna;
+}
+
+els.povredaZaposleniSelect.addEventListener('change', () => {
+  const matBr = els.povredaZaposleniSelect.value;
+  if (!matBr) return;
+  const z = zaposleniCache.find((x) => x.mat_br === matBr);
+  if (!z) return;
+  els.povredaImeInput.value = z.prezime_ime || '';
+  els.povredaRadnoMestoInput.value = z.radno_mesto || '';
+});
+
+async function loadPovrede() {
+  els.povredaInfo.textContent = 'Učitavanje...';
+  const { data, error } = await supabaseClient
+    .schema('bzr')
+    .from('povrede_na_radu')
+    .select('*')
+    .order('datum_povrede', { ascending: false });
+
+  if (error) {
+    els.povredaInfo.textContent = 'Greška pri učitavanju: ' + error.message;
+    return;
+  }
+
+  povredaCache = data || [];
+  els.povredaInfo.textContent = `Ukupno: ${povredaCache.length}`;
+  applyPovredaFilters();
+}
+
+function renderPovredaTable(list) {
+  els.povredaInfo.textContent = `Prikazano: ${list.length} od ${povredaCache.length}`;
+  els.povredaTbody.innerHTML = '';
+  list.forEach((p) => {
+    const tr = document.createElement('tr');
+    tr.className = 'row-clickable';
+    tr.innerHTML = `
+      <td>${escapeHtml(formatDatumIso(p.datum_povrede))}</td>
+      <td>${escapeHtml(p.ime_prezime || '')}</td>
+      <td>${escapeHtml(p.radno_mesto || '')}</td>
+      <td>${p.vreme_povrede ? escapeHtml(p.vreme_povrede.slice(0, 5)) + 'h' : ''}</td>
+      <td>${escapeHtml(p.vrsta_povrede || '')}</td>
+      <td class="${tezinaClass(p.ocena_tezine)}">${escapeHtml(p.ocena_tezine || '')}</td>
+    `;
+    tr.addEventListener('click', () => openPovredaEdit(p.id));
+    els.povredaTbody.appendChild(tr);
+  });
+}
+
+function applyPovredaFilters() {
+  const ime = els.povredaFilterIme.value.trim().toLowerCase();
+  const radnoMesto = els.povredaFilterRadnoMesto.value.trim().toLowerCase();
+  const vrsta = els.povredaFilterVrsta.value;
+  const ocena = els.povredaFilterOcena.value;
+
+  const filtered = povredaCache.filter((p) => {
+    if (ime && !(p.ime_prezime || '').toLowerCase().includes(ime)) return false;
+    if (radnoMesto && !(p.radno_mesto || '').toLowerCase().includes(radnoMesto)) return false;
+    if (vrsta && p.vrsta_povrede !== vrsta) return false;
+    if (ocena && p.ocena_tezine !== ocena) return false;
+    return true;
+  });
+
+  renderPovredaTable(filtered);
+}
+
+[els.povredaFilterIme, els.povredaFilterRadnoMesto].forEach((el) => {
+  el.addEventListener('input', applyPovredaFilters);
+});
+[els.povredaFilterVrsta, els.povredaFilterOcena].forEach((el) => {
+  el.addEventListener('change', applyPovredaFilters);
+});
+
+// ---- Forma (dodavanje / izmena) ----
+
+function resetPovredaForm() {
+  els.povredaForm.reset();
+  els.povredaZaposleniSelect.value = '';
+  els.povredaFormError.classList.add('hidden');
+}
+
+function openPovredaNovo() {
+  trenutnaPovredaId = null;
+  resetPovredaForm();
+  els.povredaFormNaslov.textContent = 'Nova povreda';
+  els.povredaObrisiBtn.classList.add('hidden');
+  els.povredaForm.classList.remove('hidden');
+}
+
+function openPovredaEdit(id) {
+  const p = povredaCache.find((x) => x.id === id);
+  if (!p) return;
+  trenutnaPovredaId = id;
+  resetPovredaForm();
+  els.povredaFormNaslov.textContent = 'Izmena povrede';
+  els.povredaImeInput.value = p.ime_prezime || '';
+  els.povredaRadnoMestoInput.value = p.radno_mesto || '';
+  els.povredaDatumInput.value = p.datum_povrede || '';
+  els.povredaVremeInput.value = p.vreme_povrede ? p.vreme_povrede.slice(0, 5) : '';
+  els.povredaVrstaSelect.value = p.vrsta_povrede || 'pojedinačna';
+  els.povredaOcenaSelect.value = p.ocena_tezine || 'laka';
+  els.povredaOpisInput.value = p.opis || '';
+  els.povredaObrisiBtn.classList.remove('hidden');
+  els.povredaForm.classList.remove('hidden');
+}
+
+els.povredaNoviBtn.addEventListener('click', openPovredaNovo);
+
+els.povredaOtkaziBtn.addEventListener('click', () => {
+  els.povredaForm.classList.add('hidden');
+  resetPovredaForm();
+  trenutnaPovredaId = null;
+});
+
+els.povredaForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  els.povredaFormError.classList.add('hidden');
+
+  const payload = {
+    ime_prezime: els.povredaImeInput.value.trim(),
+    radno_mesto: els.povredaRadnoMestoInput.value.trim(),
+    datum_povrede: els.povredaDatumInput.value,
+    vreme_povrede: els.povredaVremeInput.value || null,
+    vrsta_povrede: els.povredaVrstaSelect.value,
+    ocena_tezine: els.povredaOcenaSelect.value,
+    opis: els.povredaOpisInput.value.trim() || null,
+    mat_br: els.povredaZaposleniSelect.value || null,
+  };
+
+  let error;
+  if (trenutnaPovredaId) {
+    ({ error } = await supabaseClient.schema('bzr').from('povrede_na_radu').update(payload).eq('id', trenutnaPovredaId));
+  } else {
+    ({ error } = await supabaseClient.schema('bzr').from('povrede_na_radu').insert(payload));
+  }
+
+  if (error) {
+    els.povredaFormError.textContent = 'Greška pri čuvanju: ' + error.message;
+    els.povredaFormError.classList.remove('hidden');
+    return;
+  }
+
+  els.povredaForm.classList.add('hidden');
+  resetPovredaForm();
+  trenutnaPovredaId = null;
+  await loadPovrede();
+});
+
+els.povredaObrisiBtn.addEventListener('click', async () => {
+  if (!trenutnaPovredaId) return;
+  if (!confirm('Da li sigurno želiš da obrišeš ovu povredu na radu? Ovo se ne može poništiti.')) {
+    return;
+  }
+
+  els.povredaObrisiBtn.disabled = true;
+  const { error } = await supabaseClient.schema('bzr').from('povrede_na_radu').delete().eq('id', trenutnaPovredaId);
+  els.povredaObrisiBtn.disabled = false;
+
+  if (error) {
+    els.povredaFormError.textContent = 'Greška pri brisanju: ' + error.message;
+    els.povredaFormError.classList.remove('hidden');
+    return;
+  }
+
+  els.povredaForm.classList.add('hidden');
+  resetPovredaForm();
+  trenutnaPovredaId = null;
+  await loadPovrede();
+});
+
+// ---- Obrazac 2 (.docx) ----
+
+async function generisiObrazac2() {
+  if (povredaCache.length === 0) {
+    alert('Nema evidentiranih povreda na radu za Obrazac 2.');
+    return;
+  }
+
+  els.obrazac2Btn.disabled = true;
+  const originalLabel = els.obrazac2Btn.textContent;
+  els.obrazac2Btn.textContent = 'Pripremam...';
+
+  try {
+    const redovi = povredaCache
+      .slice()
+      .sort((a, b) => (a.datum_povrede || '').localeCompare(b.datum_povrede || ''))
+      .map((p, idx) => ({
+        redni_broj: `${idx + 1}.`,
+        radno_mesto: p.radno_mesto || '',
+        ime_prezime: p.ime_prezime || '',
+        vreme_nastanka: formatVremeNastanka(p.datum_povrede, p.vreme_povrede ? p.vreme_povrede.slice(0, 5) : ''),
+        vrsta_povrede: p.vrsta_povrede || '',
+        ocena_tezine: p.ocena_tezine || '',
+      }));
+
+    const resp = await fetch('templates/obrazac2-template.docx');
+    if (!resp.ok) throw new Error('Ne mogu da učitam šablon Obrasca 2 (templates/obrazac2-template.docx).');
+    const templateBuf = await resp.arrayBuffer();
+
+    const zip = new window.PizZip(templateBuf);
+    const doc = new window.Docxtemplater(zip, { paragraphLoop: true, linebreaks: true });
+    doc.render({ povrede: redovi });
+
+    const blob = doc.getZip().generate({
+      type: 'blob',
+      mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    });
+
+    const danasOznaka = formatDatumSrpski(new Date()).replace(/\./g, '-').replace(/-+$/, '');
+    triggerDownload(blob, `Obrazac2_${danasOznaka}.docx`);
+  } catch (err) {
+    alert('Greška pri generisanju Obrasca 2: ' + (err.message || err));
+  } finally {
+    els.obrazac2Btn.disabled = false;
+    els.obrazac2Btn.textContent = originalLabel;
+  }
+}
+
+els.obrazac2Btn.addEventListener('click', generisiObrazac2);
 
 // ---------- START ----------
 

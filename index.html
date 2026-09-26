@@ -302,8 +302,92 @@
 
   <!-- MODUL: POVREDE NA RADU -->
   <section id="modul-povrede" class="panel hidden">
-    <h2>Povrede na radu</h2>
-    <p class="info-msg">Ovaj modul je u pripremi. Pratiće evidenciju povreda na radu — osnova za Obrazac 2 (Pravilnik o evidencijama BZR, "Sl. glasnik RS" 5/2025 i izmene).</p>
+    <div class="panel-header-row">
+      <h2>Povrede na radu</h2>
+      <div>
+        <button type="button" class="secondary" id="povreda-novi-btn">+ Dodaj povredu</button>
+        <button type="button" class="secondary" id="obrazac2-btn">Generiši Obrazac 2 (.docx)</button>
+      </div>
+    </div>
+
+    <!-- FORMA ZA NOVU/IZMENU POVREDE -->
+    <form id="povreda-form" class="hidden" style="margin-bottom: 18px; border: 1px solid var(--border); border-radius: var(--radius); padding: 14px;">
+      <h3 id="povreda-form-naslov" style="margin-top:0;">Nova povreda</h3>
+
+      <label for="povreda-zaposleni-select">Zaposleni (opciono — popuniće ime i radno mesto)</label>
+      <select id="povreda-zaposleni-select">
+        <option value="">-- unesi ručno --</option>
+      </select>
+
+      <label for="povreda-ime-input">Ime i prezime povređenog</label>
+      <input type="text" id="povreda-ime-input" required />
+
+      <label for="povreda-radno-mesto-input">Naziv radnog mesta na kome je radio kada se dogodila povreda</label>
+      <input type="text" id="povreda-radno-mesto-input" required />
+
+      <label for="povreda-datum-input">Datum povrede</label>
+      <input type="date" id="povreda-datum-input" required />
+
+      <label for="povreda-vreme-input">Čas (vreme nastanka)</label>
+      <input type="time" id="povreda-vreme-input" />
+
+      <label for="povreda-vrsta-select">Vrsta povrede</label>
+      <select id="povreda-vrsta-select" required>
+        <option value="pojedinačna">Pojedinačna</option>
+        <option value="kolektivna">Kolektivna</option>
+      </select>
+
+      <label for="povreda-ocena-select">Ocena težine povrede</label>
+      <select id="povreda-ocena-select" required>
+        <option value="laka">Laka</option>
+        <option value="teška">Teška</option>
+        <option value="smrtna">Smrtna</option>
+      </select>
+
+      <label for="povreda-opis-input">Napomena / opis događaja (interno, ne štampa se na Obrascu 2)</label>
+      <textarea id="povreda-opis-input"></textarea>
+
+      <button type="submit" class="primary">Sačuvaj</button>
+      <button type="button" class="secondary" id="povreda-otkazi-btn">Otkaži</button>
+      <button type="button" class="danger-link hidden" id="povreda-obrisi-btn">Obriši povredu</button>
+      <div class="error-msg hidden" id="povreda-form-error"></div>
+    </form>
+
+    <table id="povreda-table">
+      <thead>
+        <tr>
+          <th>Datum</th>
+          <th>Ime i prezime</th>
+          <th>Radno mesto</th>
+          <th>Vreme</th>
+          <th>Vrsta</th>
+          <th>Ocena težine</th>
+        </tr>
+        <tr class="filter-row">
+          <th></th>
+          <th><input type="text" id="povreda-filter-ime" placeholder="filter..." /></th>
+          <th><input type="text" id="povreda-filter-radno-mesto" placeholder="filter..." /></th>
+          <th></th>
+          <th>
+            <select id="povreda-filter-vrsta">
+              <option value="">sve</option>
+              <option value="pojedinačna">pojedinačna</option>
+              <option value="kolektivna">kolektivna</option>
+            </select>
+          </th>
+          <th>
+            <select id="povreda-filter-ocena">
+              <option value="">sve</option>
+              <option value="laka">laka</option>
+              <option value="teška">teška</option>
+              <option value="smrtna">smrtna</option>
+            </select>
+          </th>
+        </tr>
+      </thead>
+      <tbody id="povreda-tbody"></tbody>
+    </table>
+    <p class="info-msg" id="povreda-info"></p>
   </section>
 
 </main>
