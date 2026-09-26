@@ -152,16 +152,13 @@
         <label for="napomena">Napomena</label>
         <textarea id="napomena"></textarea>
 
-        <label for="folder-izvestaji">Folder sa izveštajima o lekarskim pregledima (podesi jednom)</label>
-        <input type="text" id="folder-izvestaji" placeholder="npr. C:\BZR\izvestaji" />
-        <label>Izveštaj o lekarskom pregledu (PDF)</label>
+        <label>Izveštaj o lekarskom pregledu (PDF) — čuva se bezbedno na Supabase-u</label>
         <div class="file-picker-row">
           <button type="button" class="secondary" id="izvestaj-browse-btn">Izaberi fajl...</button>
           <input type="file" id="izvestaj-file" accept=".pdf" class="hidden" />
           <span class="info-msg" id="izvestaj-filename">Nije izabran fajl</span>
-          <a href="#" id="izvestaj-test-link" class="hidden" target="_blank" rel="noopener">Otvori</a>
-          <button type="button" class="secondary hidden" id="izvestaj-copy-btn">Kopiraj putanju</button>
         </div>
+        <p class="info-msg">Fajl se otprema na Supabase tek kada klikneš "Sačuvaj pregled" ispod. Kad izveštaju istekne rok ("važi do"), na listi pregleda će se pojaviti podsetnik da ga preuzmeš na disk i arhiviraš.</p>
 
         <label for="folder-obrazac6">Folder sa Obrascem br. 6 (podesi jednom)</label>
         <input type="text" id="folder-obrazac6" placeholder="npr. C:\BZR\obrazac6" />
@@ -173,7 +170,7 @@
           <a href="#" id="obrazac6-test-link" class="hidden" target="_blank" rel="noopener">Otvori</a>
           <button type="button" class="secondary hidden" id="obrazac6-copy-btn">Kopiraj putanju</button>
         </div>
-        <p class="info-msg">Napomena: iz bezbednosnih razloga browser ponekad neće sam da otvori fajl sa diska. Ako klik na "Otvori" ne uradi ništa, klikni "Kopiraj putanju" i nalepi (Ctrl+V) u Windows Explorer ili u prozor "Run" (Win+R).</p>
+        <p class="info-msg">Napomena (Obrazac br. 6): iz bezbednosnih razloga browser ponekad neće sam da otvori fajl sa diska. Ako klik na "Otvori" ne uradi ništa, klikni "Kopiraj putanju" i nalepi (Ctrl+V) u Windows Explorer ili u prozor "Run" (Win+R).</p>
 
         <button type="submit" class="primary">Sačuvaj pregled</button>
         <div class="error-msg hidden" id="pregled-error"></div>

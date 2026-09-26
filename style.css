@@ -281,6 +281,25 @@ button.link-btn {
 
 button.link-btn:hover { color: var(--primary-dark); }
 
+.arhiviranje-podsetnik {
+  margin-top: 10px;
+  padding: 8px 12px;
+  background: #fff6e6;
+  border: 1px solid #f0c36d;
+  border-radius: var(--radius);
+  font-size: 13px;
+  color: #7a5200;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.arhiviranje-podsetnik button {
+  white-space: nowrap;
+}
+
 .tezina-laka { color: var(--ok); font-weight: 600; }
 .tezina-teska { color: #b06a00; font-weight: 600; }
 .tezina-smrtna { color: var(--danger); font-weight: 700; }

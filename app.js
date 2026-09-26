@@ -35,13 +35,10 @@ const els = {
   pregrediList: document.getElementById('pregledi-list'),
   noviPregledForm: document.getElementById('novi-pregled-form'),
   pregledError: document.getElementById('pregled-error'),
-  folderIzvestaji: document.getElementById('folder-izvestaji'),
   folderObrazac6: document.getElementById('folder-obrazac6'),
   izvestajBrowseBtn: document.getElementById('izvestaj-browse-btn'),
   izvestajFile: document.getElementById('izvestaj-file'),
   izvestajFilename: document.getElementById('izvestaj-filename'),
-  izvestajTestLink: document.getElementById('izvestaj-test-link'),
-  izvestajCopyBtn: document.getElementById('izvestaj-copy-btn'),
   obrazac6BrowseBtn: document.getElementById('obrazac6-browse-btn'),
   obrazac6File: document.getElementById('obrazac6-file'),
   obrazac6Filename: document.getElementById('obrazac6-filename'),
@@ -121,10 +118,18 @@ const els = {
   povredaFilterOcena: document.getElementById('povreda-filter-ocena'),
 };
 
-let trenutniIzvestajUrl = null;
+let trenutniIzvestajFile = null; // File objekat iz <input type="file">, otprema se na Supabase tek pri submit-u forme
 let trenutniObrazac6Url = null;
 
-// ---------- LOKALNI FAJLOVI (izveštaj, obrazac 6) ----------
+// Naziv Supabase Storage bucket-a za izveštaje o lekarskim pregledima.
+// Bucket se pravi ručno u Supabase dashboardu (Storage → New bucket), mora biti privatan
+// (ne "Public") jer se radi o zdravstvenim podacima zaposlenih — vidi lekarski_izvestaji_storage_migracija.sql
+const IZVESTAJ_BUCKET = 'lekarski-izvestaji';
+
+// Koliko dugo signed URL za pregled/preuzimanje izveštaja važi (u sekundama)
+const IZVESTAJ_SIGNED_URL_TTL = 300; // 5 minuta
+
+// ---------- LOKALNI FAJLOVI (obrazac 6) ----------
 
 // Windows "Kopiraj kao putanju" (Shift+desni klik) automatski dodaje navodnike
 // oko putanje — ako se to nalepi u polje foldera, sve se pokvari. Uklanjamo ih.
@@ -238,16 +243,14 @@ function setupFilePicker({ folderInput, storageKey, browseBtn, fileInput, filena
   });
 }
 
-setupFilePicker({
-  folderInput: els.folderIzvestaji,
-  storageKey: 'bzr_folder_izvestaji',
-  browseBtn: els.izvestajBrowseBtn,
-  fileInput: els.izvestajFile,
-  filenameSpan: els.izvestajFilename,
-  testLink: els.izvestajTestLink,
-  copyBtn: els.izvestajCopyBtn,
-  getUrl: () => trenutniIzvestajUrl,
-  setUrl: (url) => { trenutniIzvestajUrl = url; },
+// Izveštaj o lekarskom pregledu: fajl se samo bira ovde, stvarno otpremanje na
+// Supabase Storage se dešava tek pri submit-u forme (vidi els.noviPregledForm handler).
+els.izvestajBrowseBtn.addEventListener('click', () => els.izvestajFile.click());
+
+els.izvestajFile.addEventListener('change', () => {
+  const file = els.izvestajFile.files[0];
+  trenutniIzvestajFile = file || null;
+  els.izvestajFilename.textContent = file ? file.name : 'Nije izabran fajl';
 });
 
 setupFilePicker({
@@ -263,13 +266,11 @@ setupFilePicker({
 });
 
 function resetFilePickers() {
-  trenutniIzvestajUrl = null;
+  trenutniIzvestajFile = null;
   trenutniObrazac6Url = null;
   els.izvestajFilename.textContent = 'Nije izabran fajl';
   els.obrazac6Filename.textContent = 'Nije izabran fajl';
-  els.izvestajCopyBtn.classList.add('hidden');
   els.obrazac6CopyBtn.classList.add('hidden');
-  els.izvestajTestLink.classList.add('hidden');
   els.obrazac6TestLink.classList.add('hidden');
   els.izvestajFile.value = '';
   els.obrazac6File.value = '';
@@ -754,13 +755,35 @@ async function loadPregledi(matBr) {
     return;
   }
 
+  // Za izveštaje koji su na Supabase Storage-u, generiši kratkotrajni signed URL
+  // za pregled/preuzimanje (bucket je privatan — nema javnog linka).
+  const signedUrls = {};
+  await Promise.all(
+    data
+      .filter((p) => p.izvestaj_storage_path)
+      .map(async (p) => {
+        const { data: signed } = await supabaseClient
+          .storage
+          .from(IZVESTAJ_BUCKET)
+          .createSignedUrl(p.izvestaj_storage_path, IZVESTAJ_SIGNED_URL_TTL);
+        if (signed) signedUrls[p.id] = signed.signedUrl;
+      })
+  );
+
   const rezultatClass = (r) => {
     if (r === 'sposoban') return 'rezultat-sposoban';
     if (r === 'nesposoban') return 'rezultat-nesposoban';
     return 'rezultat-uslovno';
   };
 
-  els.pregrediList.innerHTML = data.map((p) => `
+  const danasIso = new Date().toISOString().slice(0, 10);
+
+  els.pregrediList.innerHTML = data.map((p) => {
+    // Podsetnik za arhiviranje: fajl je i dalje na Supabase-u, rok ("važi do") je prošao,
+    // i još nije arhiviran — vreme je da se preuzme na disk i ukloni sa Supabase-a.
+    const zaArhiviranje = !!p.izvestaj_storage_path && !p.izvestaj_arhiviran && !!p.vazi_do && p.vazi_do < danasIso;
+
+    return `
     <div class="pregled-item">
       <div><strong>${p.datum_pregleda}</strong> — ${p.vrsta_pregleda}</div>
       <div class="${rezultatClass(p.rezultat)}">${p.rezultat}</div>
@@ -769,20 +792,90 @@ async function loadPregledi(matBr) {
       ${p.vazi_do ? `<div>Važi do: ${p.vazi_do}</div>` : ''}
       ${p.napomena ? `<div>Napomena: ${p.napomena}</div>` : ''}
       <div class="pregled-links">
-        ${p.izvestaj_url ? `
-          <a href="${p.izvestaj_url}" target="_blank" rel="noopener">Izveštaj o pregledu</a>
+        ${p.izvestaj_storage_path ? (
+          signedUrls[p.id]
+            ? `<a href="${signedUrls[p.id]}" target="_blank" rel="noopener">Izveštaj o pregledu</a>`
+            : `<span class="info-msg">Izveštaj: link trenutno nije dostupan, osveži stranicu</span>`
+        ) : ''}
+        ${(!p.izvestaj_storage_path && p.izvestaj_url) ? `
+          <a href="${p.izvestaj_url}" target="_blank" rel="noopener">Izveštaj o pregledu (stari lokalni fajl)</a>
           <button type="button" class="link-btn btn-copy-path" data-path="${escapeAttr(fileUrlToWindowsPath(p.izvestaj_url))}">Kopiraj putanju</button>
         ` : ''}
+        ${(!p.izvestaj_storage_path && !p.izvestaj_url && p.izvestaj_arhiviran) ? `<span class="badge">Izveštaj arhiviran lokalno</span>` : ''}
         ${p.obrazac6_url ? `
           <a href="${p.obrazac6_url}" target="_blank" rel="noopener">Obrazac br. 6</a>
           <button type="button" class="link-btn btn-copy-path" data-path="${escapeAttr(fileUrlToWindowsPath(p.obrazac6_url))}">Kopiraj putanju</button>
         ` : ''}
       </div>
+      ${zaArhiviranje ? `
+        <div class="arhiviranje-podsetnik">
+          <span>⚠ Rok je istekao (važi do ${formatDatumIso(p.vazi_do)}) — vreme je da arhiviraš ovaj izveštaj.</span>
+          <button type="button" class="secondary btn-arhiviraj-izvestaj" data-id="${p.id}" data-path="${escapeAttr(p.izvestaj_storage_path)}">Preuzmi i ukloni sa Supabase-a</button>
+        </div>
+      ` : ''}
       <div class="pregled-actions">
         <button type="button" class="danger-link btn-obrisi-pregled" data-id="${p.id}">Obriši pregled</button>
       </div>
     </div>
-  `).join('');
+  `;
+  }).join('');
+}
+
+// Preuzima izveštaj sa Supabase Storage-a na disk korisnika, pa (posle potvrde)
+// trajno uklanja fajl sa Supabase-a i markira red kao arhiviran. Fajl ostaje samo
+// lokalno kod korisnika od tog trenutka — Supabase se koristi da drži samo tekuće,
+// još važeće izveštaje.
+async function arhivirajIzvestaj(id, storagePath, btn) {
+  const originalLabel = btn.textContent;
+  btn.disabled = true;
+
+  try {
+    btn.textContent = 'Preuzimanje...';
+    const { data: signed, error: signErr } = await supabaseClient
+      .storage
+      .from(IZVESTAJ_BUCKET)
+      .createSignedUrl(storagePath, IZVESTAJ_SIGNED_URL_TTL);
+
+    if (signErr || !signed) {
+      throw new Error('Nije moguće generisati link za preuzimanje: ' + (signErr ? signErr.message : 'nepoznata greška'));
+    }
+
+    const resp = await fetch(signed.signedUrl);
+    if (!resp.ok) throw new Error('Preuzimanje fajla nije uspelo (HTTP ' + resp.status + ').');
+    const blob = await resp.blob();
+    const filename = storagePath.split('/').pop() || 'izvestaj.pdf';
+    triggerDownload(blob, filename);
+
+    const potvrda = confirm(
+      'Fajl je preuzet u tvoj folder za preuzimanja (Downloads).\n\n' +
+      'Proveri da je fajl stvarno stigao na disk, pa potvrdi da ga trajno uklonim sa Supabase-a.'
+    );
+    if (!potvrda) {
+      btn.textContent = originalLabel;
+      btn.disabled = false;
+      return;
+    }
+
+    btn.textContent = 'Uklanjanje sa Supabase-a...';
+    const { error: removeErr } = await supabaseClient.storage.from(IZVESTAJ_BUCKET).remove([storagePath]);
+    if (removeErr) throw new Error('Uklanjanje sa Supabase-a nije uspelo: ' + removeErr.message);
+
+    const { error: updateErr } = await supabaseClient
+      .schema('bzr')
+      .from('lekarski_pregledi')
+      .update({ izvestaj_storage_path: null, izvestaj_arhiviran: true })
+      .eq('id', id);
+
+    if (updateErr) {
+      throw new Error('Fajl je uklonjen sa Supabase-a, ali ažuriranje evidencije nije uspelo: ' + updateErr.message);
+    }
+
+    if (trenutniZaposleni) await loadPregledi(trenutniZaposleni.mat_br);
+  } catch (err) {
+    alert(err.message);
+    btn.textContent = originalLabel;
+    btn.disabled = false;
+  }
 }
 
 // Kopiranje putanje do lokalnog fajla (browser iz bezbednosnih razloga često ne
@@ -791,6 +884,12 @@ els.pregrediList.addEventListener('click', async (e) => {
   const copyBtn = e.target.closest('.btn-copy-path');
   if (copyBtn) {
     copyPathToClipboard(copyBtn.dataset.path, copyBtn);
+    return;
+  }
+
+  const arhivirajBtn = e.target.closest('.btn-arhiviraj-izvestaj');
+  if (arhivirajBtn) {
+    await arhivirajIzvestaj(arhivirajBtn.dataset.id, arhivirajBtn.dataset.path, arhivirajBtn);
     return;
   }
 
@@ -803,12 +902,25 @@ els.pregrediList.addEventListener('click', async (e) => {
   }
 
   btn.disabled = true;
+
+  // Ako pregled ima izveštaj na Supabase Storage-u, ukloni i njega da ne ostane siroče.
+  const { data: redZaBrisanje } = await supabaseClient
+    .schema('bzr')
+    .from('lekarski_pregledi')
+    .select('izvestaj_storage_path')
+    .eq('id', id)
+    .maybeSingle();
+
   const { error } = await supabaseClient.schema('bzr').from('lekarski_pregledi').delete().eq('id', id);
 
   if (error) {
     alert('Greška pri brisanju: ' + error.message);
     btn.disabled = false;
     return;
+  }
+
+  if (redZaBrisanje && redZaBrisanje.izvestaj_storage_path) {
+    await supabaseClient.storage.from(IZVESTAJ_BUCKET).remove([redZaBrisanje.izvestaj_storage_path]).catch(() => {});
   }
 
   if (trenutniZaposleni) {
@@ -835,37 +947,74 @@ els.noviPregledForm.addEventListener('submit', async (e) => {
 
   if (!trenutniZaposleni) return;
 
-  const payload = {
-    mat_br: trenutniZaposleni.mat_br,
-    vrsta_pregleda: document.getElementById('vrsta-pregleda').value,
-    datum_pregleda: document.getElementById('datum-pregleda').value,
-    rezultat: document.getElementById('rezultat').value,
-    ustanova: document.getElementById('ustanova').value || null,
-    broj_uverenja: document.getElementById('broj-uverenja').value || null,
-    vazi_do: document.getElementById('vazi-do').value || null,
-    napomena: document.getElementById('napomena').value || null,
-    izvestaj_url: trenutniIzvestajUrl || null,
-    obrazac6_url: trenutniObrazac6Url || null,
-  };
+  const submitBtn = els.noviPregledForm.querySelector('button[type="submit"]');
+  const originalLabel = submitBtn.textContent;
+  submitBtn.disabled = true;
 
-  const { error } = await supabaseClient.schema('bzr').from('lekarski_pregledi').insert(payload);
+  let izvestajStoragePath = null;
 
-  if (error) {
-    els.pregledError.textContent = 'Greška pri čuvanju: ' + error.message;
+  try {
+    // Ako je izabran fajl, prvo ga otpremi na Supabase Storage — tek ako to uspe,
+    // upisujemo red u bazu (da ne ostane red bez fajla ili fajl bez reda).
+    if (trenutniIzvestajFile) {
+      submitBtn.textContent = 'Otpremanje izveštaja...';
+      const ext = (trenutniIzvestajFile.name.split('.').pop() || '').replace(/[^a-zA-Z0-9]/g, '');
+      izvestajStoragePath = `${trenutniZaposleni.mat_br}/${Date.now()}${ext ? '.' + ext : ''}`;
+
+      const { error: uploadError } = await supabaseClient
+        .storage
+        .from(IZVESTAJ_BUCKET)
+        .upload(izvestajStoragePath, trenutniIzvestajFile, {
+          contentType: trenutniIzvestajFile.type || 'application/pdf',
+          upsert: false,
+        });
+
+      if (uploadError) {
+        throw new Error('Otpremanje izveštaja na Supabase nije uspelo: ' + uploadError.message);
+      }
+    }
+
+    submitBtn.textContent = 'Čuvanje...';
+
+    const payload = {
+      mat_br: trenutniZaposleni.mat_br,
+      vrsta_pregleda: document.getElementById('vrsta-pregleda').value,
+      datum_pregleda: document.getElementById('datum-pregleda').value,
+      rezultat: document.getElementById('rezultat').value,
+      ustanova: document.getElementById('ustanova').value || null,
+      broj_uverenja: document.getElementById('broj-uverenja').value || null,
+      vazi_do: document.getElementById('vazi-do').value || null,
+      napomena: document.getElementById('napomena').value || null,
+      izvestaj_storage_path: izvestajStoragePath,
+      obrazac6_url: trenutniObrazac6Url || null,
+    };
+
+    const { error } = await supabaseClient.schema('bzr').from('lekarski_pregledi').insert(payload);
+
+    if (error) {
+      throw new Error('Greška pri čuvanju: ' + error.message);
+    }
+
+    els.noviPregledForm.reset();
+    // form.reset() briše i folder polje za obrazac 6 (deo je iste forme) — vraćamo ga iz memorisane vrednosti
+    els.folderObrazac6.value = localStorage.getItem('bzr_folder_obrazac6') || '';
+    resetFilePickers();
+
+    // Novi pregled može da promeni status rizika (npr. datum isteka) — osveži listu
+    // i vrati se na nju, umesto da ostaneš na detaljima zaposlenog.
+    await loadZaposleni();
+    showView(els.zaposleniView);
+  } catch (err) {
+    // Ako je fajl otpremljen ali upis reda nije uspeo, ukloni ga da ne ostane siroče na Storage-u.
+    if (izvestajStoragePath) {
+      await supabaseClient.storage.from(IZVESTAJ_BUCKET).remove([izvestajStoragePath]).catch(() => {});
+    }
+    els.pregledError.textContent = err.message;
     els.pregledError.classList.remove('hidden');
-    return;
+  } finally {
+    submitBtn.disabled = false;
+    submitBtn.textContent = originalLabel;
   }
-
-  els.noviPregledForm.reset();
-  // form.reset() briše i folder polja (deo su iste forme) — vraćamo ih iz memorisane vrednosti
-  els.folderIzvestaji.value = localStorage.getItem('bzr_folder_izvestaji') || '';
-  els.folderObrazac6.value = localStorage.getItem('bzr_folder_obrazac6') || '';
-  resetFilePickers();
-
-  // Novi pregled može da promeni status rizika (npr. datum isteka) — osveži listu
-  // i vrati se na nju, umesto da ostaneš na detaljima zaposlenog.
-  await loadZaposleni();
-  showView(els.zaposleniView);
 });
 
 // ---------- OPREMA ZA RAD (Obrazac 8) ----------
