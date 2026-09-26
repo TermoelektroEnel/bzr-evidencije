@@ -15,7 +15,6 @@ const els = {
   zaposleniView: document.getElementById('zaposleni-view'),
   detailView: document.getElementById('detail-view'),
   obrazac1Btn: document.getElementById('obrazac1-btn'),
-  obrazac1Print: document.getElementById('obrazac1-print'),
   logoutBtn: document.getElementById('logout-btn'),
   loginBtn: document.getElementById('login-btn'),
   loginEmail: document.getElementById('login-email'),
@@ -105,6 +104,15 @@ function formatDatumSrpski(d) {
   const mm = String(d.getMonth() + 1).padStart(2, '0');
   const yyyy = d.getFullYear();
   return `${dd}.${mm}.${yyyy}.`;
+}
+
+// Formatira ISO datum (YYYY-MM-DD, kako ga vraća Postgres) u srpski format bez
+// oslanjanja na Date parsiranje (izbegava pomeranje datuma zbog vremenske zone).
+function formatDatumIso(isoStr) {
+  if (!isoStr) return '';
+  const [y, m, d] = String(isoStr).split('-');
+  if (!y || !m || !d) return '';
+  return `${d}.${m}.${y}.`;
 }
 
 function triggerDownload(blob, filename) {
@@ -377,12 +385,15 @@ els.backToList.addEventListener('click', () => {
   showView(els.zaposleniView);
 });
 
-// ---------- OBRAZAC 1 (registar radnih mesta sa povećanim rizikom, za štampu) ----------
+// ---------- OBRAZAC 1 (evidencija o radnim mestima sa povećanim rizikom, zaposlenima i
+// lekarskim pregledima) — generiše se kao .docx po zvaničnom šablonu, jedan red po
+// zaposlenom sa povećanim rizikom, sa istorijom lekarskih pregleda (prethodni + do 4
+// najnovija periodična/vanredna pregleda).
 
 async function generisiObrazac1() {
   const rizicni = zaposleniCache.filter((z) => z.povecan_rizik);
   if (rizicni.length === 0) {
-    alert('Nema zaposlenih sa povećanim rizikom za štampu Obrasca 1.');
+    alert('Nema zaposlenih sa povećanim rizikom za Obrazac 1.');
     return;
   }
 
@@ -405,71 +416,67 @@ async function generisiObrazac1() {
     const { data: pregledi, error: pregErr } = await supabaseClient
       .schema('bzr')
       .from('lekarski_pregledi')
-      .select('mat_br, datum_pregleda, vazi_do, broj_uverenja, rezultat')
+      .select('mat_br, vrsta_pregleda, datum_pregleda, vazi_do, broj_uverenja, rezultat')
       .in('mat_br', matBrovi)
-      .order('datum_pregleda', { ascending: false });
+      .order('datum_pregleda', { ascending: true });
     if (pregErr) throw pregErr;
 
-    // Za svakog zaposlenog uzimamo samo NAJNOVIJI pregled (lista je već sortirana po datumu opadajuće)
-    const poslednjiMap = {};
+    const pregrediPoZaposlenom = {};
     (pregledi || []).forEach((p) => {
-      if (!poslednjiMap[p.mat_br]) poslednjiMap[p.mat_br] = p;
+      if (!pregrediPoZaposlenom[p.mat_br]) pregrediPoZaposlenom[p.mat_br] = [];
+      pregrediPoZaposlenom[p.mat_br].push(p);
     });
 
     const redovi = rizicni
       .slice()
       .sort((a, b) => (a.prezime_ime || '').localeCompare(b.prezime_ime || ''))
-      .map((z) => {
-        const p = poslednjiMap[z.mat_br];
-        return {
-          radnoMesto: z.radno_mesto || '',
-          ime: z.prezime_ime || '',
-          interval: periodicitetMap[z.sifra_radnog_mesta] ?? '',
-          datumPregleda: (p && p.datum_pregleda) || '',
-          datumSledeceg: (p && p.vazi_do) || '',
-          brojUverenja: (p && p.broj_uverenja) || '',
-          ocena: (p && p.rezultat) || '',
+      .map((z, idx) => {
+        const svi = pregrediPoZaposlenom[z.mat_br] || [];
+        const prethodni = svi.find((p) => p.vrsta_pregleda === 'prethodni');
+        // Periodični i vanredni pregledi zajedno, hronološki (niz je već sortiran rastuće
+        // po datumu) — uzimamo poslednja 4, jer šablon ima 4 reda za njih.
+        const periodicni = svi.filter((p) => p.vrsta_pregleda !== 'prethodni').slice(-4);
+
+        const red = {
+          redni_broj: `${idx + 1}.`,
+          radno_mesto: z.radno_mesto || '',
+          ime_prezime: z.prezime_ime || '',
+          interval: periodicitetMap[z.sifra_radnog_mesta] != null ? String(periodicitetMap[z.sifra_radnog_mesta]) : '',
+          datum_prethodni: (prethodni && formatDatumIso(prethodni.datum_pregleda)) || '',
+          sledeci_prethodni: (prethodni && formatDatumIso(prethodni.vazi_do)) || '',
+          broj_prethodni: (prethodni && prethodni.broj_uverenja) || '',
+          ocena_prethodni: (prethodni && prethodni.rezultat) || '',
+          mere_prethodni: '',
         };
+
+        for (let i = 0; i < 4; i++) {
+          const p = periodicni[i];
+          red[`datum_p${i + 1}`] = (p && formatDatumIso(p.datum_pregleda)) || '';
+          red[`sledeci_p${i + 1}`] = (p && formatDatumIso(p.vazi_do)) || '';
+          red[`broj_p${i + 1}`] = (p && p.broj_uverenja) || '';
+          red[`ocena_p${i + 1}`] = (p && p.rezultat) || '';
+          red[`mere_p${i + 1}`] = '';
+        }
+        return red;
       });
 
-    const danas = formatDatumSrpski(new Date());
-    els.obrazac1Print.innerHTML = `
-      <h2>OBRAZAC 1 — Evidencija o radnim mestima sa povećanim rizikom</h2>
-      <p class="obrazac1-meta">Termoelektro Enel AD &middot; Bačvanska 21b/III, Beograd &middot; PIB 100252434 &middot; Datum izvoda: ${danas}</p>
-      <table>
-        <thead>
-          <tr>
-            <th>Naziv radnog mesta</th>
-            <th>Ime i prezime zaposlenog</th>
-            <th>Interval pregleda (mes.)</th>
-            <th>Datum poslednjeg pregleda</th>
-            <th>Datum sledećeg pregleda</th>
-            <th>Broj lek. izveštaja</th>
-            <th>Ocena sposobnosti</th>
-            <th>Preduzete mere</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${redovi.map((r) => `
-            <tr>
-              <td>${escapeHtml(r.radnoMesto)}</td>
-              <td>${escapeHtml(r.ime)}</td>
-              <td>${escapeHtml(r.interval)}</td>
-              <td>${escapeHtml(r.datumPregleda)}</td>
-              <td>${escapeHtml(r.datumSledeceg)}</td>
-              <td>${escapeHtml(r.brojUverenja)}</td>
-              <td>${escapeHtml(r.ocena)}</td>
-              <td></td>
-            </tr>
-          `).join('')}
-        </tbody>
-      </table>
-    `;
+    const resp = await fetch('templates/obrazac1-template.docx');
+    if (!resp.ok) throw new Error('Ne mogu da učitam šablon Obrasca 1 (templates/obrazac1-template.docx).');
+    const templateBuf = await resp.arrayBuffer();
 
-    document.body.classList.add('printing-obrazac1');
-    window.print();
+    const zip = new window.PizZip(templateBuf);
+    const doc = new window.Docxtemplater(zip, { paragraphLoop: true, linebreaks: true });
+    doc.render({ zaposleni: redovi });
+
+    const blob = doc.getZip().generate({
+      type: 'blob',
+      mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    });
+
+    const danasOznaka = formatDatumSrpski(new Date()).replace(/\./g, '-').replace(/-+$/, '');
+    triggerDownload(blob, `Obrazac1_${danasOznaka}.docx`);
   } catch (err) {
-    alert('Greška pri pripremi Obrasca 1: ' + (err.message || err));
+    alert('Greška pri generisanju Obrasca 1: ' + (err.message || err));
   } finally {
     els.obrazac1Btn.disabled = false;
     els.obrazac1Btn.textContent = originalLabel;
@@ -477,10 +484,6 @@ async function generisiObrazac1() {
 }
 
 els.obrazac1Btn.addEventListener('click', generisiObrazac1);
-
-window.addEventListener('afterprint', () => {
-  document.body.classList.remove('printing-obrazac1');
-});
 
 // ---------- DETALJI + LEKARSKI PREGLEDI ----------
 

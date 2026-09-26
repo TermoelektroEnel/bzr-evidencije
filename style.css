@@ -283,21 +283,9 @@ button.link-btn:hover { color: var(--primary-dark); }
 
 .print-only { display: none; }
 
-#obrazac1-print { display: none; }
-
-#obrazac1-print h2 { margin-bottom: 4px; }
-#obrazac1-print .obrazac1-meta { color: var(--muted); font-size: 13px; margin-bottom: 14px; }
-#obrazac1-print table { width: 100%; border-collapse: collapse; font-size: 12px; }
-#obrazac1-print th, #obrazac1-print td { border: 1px solid #333; padding: 5px 6px; text-align: left; }
-#obrazac1-print th { background: #eee; }
-
 @media print {
   header.app-header, .portal-nav, #search-input, #novi-pregled-form, .no-print, .back-link { display: none !important; }
   .print-only { display: block; }
   body { background: #fff; }
   .panel { border: none; padding: 0; }
-
-  /* Kad se štampa Obrazac 1, sakrij sve ostalo i prikaži samo taj sadržaj */
-  body.printing-obrazac1 > *:not(#obrazac1-print) { display: none !important; }
-  body.printing-obrazac1 #obrazac1-print { display: block !important; }
 }
