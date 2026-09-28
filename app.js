@@ -909,8 +909,9 @@ els.uputGenerisiBtn.addEventListener('click', async () => {
   els.uputGenerisiBtn.textContent = 'Generišem...';
 
   try {
-    // Sačuvaj lične podatke za sledeći put (ne blokira generisanje ako ovo ne uspe).
-    await supabaseClient.schema('bzr').from('zaposleni_licni_podaci').upsert({
+    // Sačuvaj lične podatke za sledeći put (ne blokira generisanje ako ovo ne uspe --
+    // ali greška se MORA prikazati, ne sme proći nezapaženo kao do sada).
+    const { error: saveError } = await supabaseClient.schema('bzr').from('zaposleni_licni_podaci').upsert({
       mat_br: matBr,
       ime_ocevo_ime_prezime: imeOcevoPrezime || null,
       jmbg: jmbg || null,
@@ -919,6 +920,12 @@ els.uputGenerisiBtn.addEventListener('click', async () => {
       zanimanje: zanimanje || null,
       azurirano_at: new Date().toISOString(),
     });
+    if (saveError) {
+      els.uputGenError.textContent =
+        'Napomena: lični podaci NISU sačuvani za sledeći put (greška: ' + saveError.message +
+        '). Uput se ipak generiše sa upravo unetim podacima.';
+      els.uputGenError.classList.remove('hidden');
+    }
 
     const { data: rmRow, error: rmError } = await supabaseClient
       .schema('bzr')
