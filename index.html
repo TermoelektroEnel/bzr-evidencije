@@ -42,8 +42,38 @@
     <section id="zaposleni-view" class="panel hidden">
       <div class="panel-header-row">
         <h2>Zaposleni</h2>
-        <button type="button" class="secondary" id="obrazac1-btn">Generiši Obrazac 1 (.docx)</button>
+        <div>
+          <button type="button" class="secondary" id="kadrovska-uvoz-btn">Uvoz JMBG / datuma rođenja / imena oca</button>
+          <button type="button" class="secondary" id="obrazac1-btn">Generiši Obrazac 1 (.docx)</button>
+        </div>
       </div>
+
+      <div id="kadrovska-uvoz-panel" class="hidden" style="margin-bottom: 18px; border: 1px solid var(--border); border-radius: var(--radius); padding: 14px;">
+        <h3 style="margin-top:0;">Uvoz iz kadrovske (Clipper)</h3>
+        <p class="info-msg">Čita SAMO matični broj, JMBG, datum rođenja i ime oca iz kadrovskih DBF fajlova — ništa drugo (ni adresu, ni broj lične karte, ni tekući račun, ni pol). Radi direktno u browseru (Chrome ili Edge) — fajlovi ne idu nigde osim ovde, dok sam ne potvrdiš upis. Izaberi nadređeni folder u kome se nalaze podfolderi DBF, PPN_dbf i PPP_dbf.</p>
+        <button type="button" class="secondary" id="kadrovska-izaberi-folder-btn">Izaberi folder sa kadrovskom...</button>
+        <div class="error-msg hidden" id="kadrovska-uvoz-error"></div>
+        <div id="kadrovska-uvoz-pregled" class="hidden">
+          <p class="info-msg" id="kadrovska-uvoz-info"></p>
+          <table id="kadrovska-uvoz-table">
+            <thead>
+              <tr>
+                <th><input type="checkbox" id="kadrovska-uvoz-sve" checked /></th>
+                <th>Mat. br.</th>
+                <th>Ime i prezime (iz BZR evidencije)</th>
+                <th>JMBG</th>
+                <th>Datum rođenja</th>
+                <th>Ime oca</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="kadrovska-uvoz-tbody"></tbody>
+          </table>
+          <button type="button" class="primary" id="kadrovska-uvoz-upisi-btn">Upiši izabrano u BZR</button>
+          <button type="button" class="secondary" id="kadrovska-uvoz-otkazi-btn">Zatvori</button>
+        </div>
+      </div>
+
       <table id="zaposleni-table">
         <thead>
           <tr>
@@ -483,6 +513,7 @@
 </main>
 
 <script src="config.js"></script>
+<script src="kadrovska-uvoz.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

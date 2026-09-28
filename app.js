@@ -80,6 +80,16 @@ const els = {
   uputZanimanjeInput: document.getElementById('uput-zanimanje-input'),
   uputGenerisiBtn: document.getElementById('uput-generisi-btn'),
   uputGenError: document.getElementById('uput-gen-error'),
+  kadrovskaUvozBtn: document.getElementById('kadrovska-uvoz-btn'),
+  kadrovskaUvozPanel: document.getElementById('kadrovska-uvoz-panel'),
+  kadrovskaIzaberiFolderBtn: document.getElementById('kadrovska-izaberi-folder-btn'),
+  kadrovskaUvozError: document.getElementById('kadrovska-uvoz-error'),
+  kadrovskaUvozPregled: document.getElementById('kadrovska-uvoz-pregled'),
+  kadrovskaUvozInfo: document.getElementById('kadrovska-uvoz-info'),
+  kadrovskaUvozSve: document.getElementById('kadrovska-uvoz-sve'),
+  kadrovskaUvozTbody: document.getElementById('kadrovska-uvoz-tbody'),
+  kadrovskaUvozUpisiBtn: document.getElementById('kadrovska-uvoz-upisi-btn'),
+  kadrovskaUvozOtkaziBtn: document.getElementById('kadrovska-uvoz-otkazi-btn'),
 
   // Oprema za rad
   opremaListView: document.getElementById('oprema-list-view'),
@@ -667,6 +677,28 @@ async function openDetail(matBr) {
 // Lični podaci za "Uput za periodični lekarski pregled" (JMBG, datum/mesto rođenja,
 // zanimanje) -- ne dolaze iz Adamove baze, čuvaju se lokalno po zaposlenom
 // (bzr.zaposleni_licni_podaci) i sama aplikacija ih predlaže sledeći put.
+// Prva slova reči velika, ostalo malo -- za sastavljanje imena iz kadrovske
+// (koja stoje velikim slovima, npr. "PETROVIĆ PETAR").
+function velikoPrvoSlovo(str) {
+  return (str || '')
+    .toLocaleLowerCase('sr-Latn-RS')
+    .replace(/(^|[\s-])\p{L}/gu, (c) => c.toLocaleUpperCase('sr-Latn-RS'));
+}
+
+// "PREZIME IME" (kako stoji u kadrovskoj, prezime_ime je JEDNO polje) + ime oca
+// -> predlog za "Ime, očevo ime i prezime". Ovo je samo PREDLOG, ostaje u
+// izmenjivom polju koje korisnik proveri/ispravi pre generisanja uputa --
+// pretpostavka da je poslednja reč ime a sve pre nje prezime nije tačna za
+// svakoga (prezimena od dve reči i sl).
+function predlogImeOcevoPrezime(prezimeIme, imeOca) {
+  const reci = (prezimeIme || '').trim().split(/\s+/).filter(Boolean);
+  if (!reci.length) return '';
+  const ime = reci.length > 1 ? reci[reci.length - 1] : '';
+  const prezime = reci.length > 1 ? reci.slice(0, -1).join(' ') : reci[0];
+  const delovi = [velikoPrvoSlovo(ime), velikoPrvoSlovo(imeOca), velikoPrvoSlovo(prezime)].filter(Boolean);
+  return delovi.join(' ');
+}
+
 async function ucitajLicnePodatkeZaUput(matBr) {
   els.uputImeOcevoPrezimeInput.value = '';
   els.uputJmbgInput.value = '';
@@ -677,17 +709,25 @@ async function ucitajLicnePodatkeZaUput(matBr) {
   const { data, error } = await supabaseClient
     .schema('bzr')
     .from('zaposleni_licni_podaci')
-    .select('ime_ocevo_ime_prezime, jmbg, datum_rodjenja, mesto_rodjenja_opstina, zanimanje')
+    .select('ime_ocevo_ime_prezime, jmbg, datum_rodjenja, mesto_rodjenja_opstina, zanimanje, ime_oca')
     .eq('mat_br', matBr)
     .maybeSingle();
 
   if (error || !data) return;
 
-  els.uputImeOcevoPrezimeInput.value = data.ime_ocevo_ime_prezime || '';
   els.uputJmbgInput.value = data.jmbg || '';
   els.uputDatumRodjenjaInput.value = data.datum_rodjenja || '';
   els.uputMestoRodjenjaInput.value = data.mesto_rodjenja_opstina || '';
   els.uputZanimanjeInput.value = data.zanimanje || '';
+
+  if (data.ime_ocevo_ime_prezime) {
+    els.uputImeOcevoPrezimeInput.value = data.ime_ocevo_ime_prezime;
+  } else if (data.ime_oca && trenutniZaposleni && trenutniZaposleni.prezime_ime) {
+    // Nema ručno potvrđenog imena -- ponudi predlog iz kadrovske, ali ga
+    // ne čuvaj dok korisnik sam ne proveri i klikne "Generiši".
+    els.uputImeOcevoPrezimeInput.value = predlogImeOcevoPrezime(trenutniZaposleni.prezime_ime, data.ime_oca);
+    els.uputImeOcevoPrezimeInput.placeholder = 'Predlog iz kadrovske — proveri redosled i ispravi ako treba';
+  }
 }
 
 // ---------- STATUS RIZIKA (ručni izuzetak od kataloga radnih mesta) ----------
@@ -2210,6 +2250,162 @@ els.katalogObrisiBtn.addEventListener('click', async () => {
 
   els.katalogForm.classList.add('hidden');
   await loadKatalog();
+});
+
+// ---------- UVOZ IZ KADROVSKE (JMBG / datum rođenja / ime oca) ----------
+// Čita samo ta tri polja (plus mat_br za povezivanje) direktno iz kadrovskih
+// DBF fajlova, u browseru (kadrovska-uvoz.js) -- ništa se ne šalje nikuda dok
+// korisnik ne pregleda listu i sam ne potvrdi upis. Puni tabelu
+// bzr.zaposleni_licni_podaci, istu koju puni i ručni unos u Uputu -- ne dira
+// ostala polja te tabele (mesto rođenja, zanimanje, ime_ocevo_ime_prezime).
+
+let kadrovskaUvozPodaci = null; // Map(mat_br -> {prezime_ime, jmbg, datum_rodjenja, ime_oca})
+
+els.kadrovskaUvozBtn.addEventListener('click', () => {
+  els.kadrovskaUvozPanel.classList.toggle('hidden');
+});
+
+els.kadrovskaUvozOtkaziBtn.addEventListener('click', () => {
+  els.kadrovskaUvozPanel.classList.add('hidden');
+  els.kadrovskaUvozPregled.classList.add('hidden');
+});
+
+els.kadrovskaIzaberiFolderBtn.addEventListener('click', async () => {
+  els.kadrovskaUvozError.classList.add('hidden');
+  els.kadrovskaUvozPregled.classList.add('hidden');
+
+  const originalLabel = els.kadrovskaIzaberiFolderBtn.textContent;
+  els.kadrovskaIzaberiFolderBtn.disabled = true;
+  els.kadrovskaIzaberiFolderBtn.textContent = 'Čitam...';
+
+  try {
+    const citac = await window.KadrovskaUvoz.izaberiFolderKadrovske();
+    const { podaci, poIzvoru, upozorenja } = await window.KadrovskaUvoz.procitajLicnePodatkeIzKadrovske(citac);
+    kadrovskaUvozPodaci = podaci;
+
+    // Postojeći podaci u BZR bazi -- da se u pregledu vidi šta je novo/izmenjeno.
+    const { data: postojeci, error: postojeciErr } = await supabaseClient
+      .schema('bzr')
+      .from('zaposleni_licni_podaci')
+      .select('mat_br, jmbg, datum_rodjenja, ime_oca');
+    if (postojeciErr) throw new Error('Greška pri čitanju postojećih podataka: ' + postojeciErr.message);
+
+    const postojeciMap = new Map((postojeci || []).map((r) => [r.mat_br, r]));
+
+    // Prikazujemo samo zaposlene koje BZR aplikacija uopšte poznaje (žива
+    // evidencija preko FDW-a) -- nema smisla uvoziti lične podatke za nekog
+    // ko u BZR-u ne postoji.
+    const redovi = [];
+    for (const z of zaposleniCache) {
+      const iz = podaci.get(z.mat_br);
+      if (!iz) continue;
+      if (!iz.jmbg && !iz.datum_rodjenja && !iz.ime_oca) continue;
+
+      const post = postojeciMap.get(z.mat_br);
+      let status = 'novo';
+      if (post) {
+        const isto = (post.jmbg || null) === (iz.jmbg || null)
+          && (post.datum_rodjenja || null) === (iz.datum_rodjenja || null)
+          && (post.ime_oca || null) === (iz.ime_oca || null);
+        status = isto ? 'isto' : 'izmenjeno';
+      }
+      redovi.push({ mat_br: z.mat_br, prezime_ime: z.prezime_ime, ...iz, status });
+    }
+
+    renderKadrovskaUvozTabela(redovi, poIzvoru, upozorenja);
+    els.kadrovskaUvozPregled.classList.remove('hidden');
+  } catch (err) {
+    els.kadrovskaUvozError.textContent = 'Greška: ' + (err.message || err);
+    els.kadrovskaUvozError.classList.remove('hidden');
+  } finally {
+    els.kadrovskaIzaberiFolderBtn.disabled = false;
+    els.kadrovskaIzaberiFolderBtn.textContent = originalLabel;
+  }
+});
+
+function renderKadrovskaUvozTabela(redovi, poIzvoru, upozorenja) {
+  const brojevi = poIzvoru.map((x) => `${x.opis}: ${x.ucitano}`).join(', ');
+  const novih = redovi.filter((r) => r.status === 'novo').length;
+  const izmenjenih = redovi.filter((r) => r.status === 'izmenjeno').length;
+  let info = `Pročitano iz kadrovske (${brojevi}). U BZR evidenciji prepoznato: ${redovi.length} `
+    + `(novo: ${novih}, izmenjeno: ${izmenjenih}, nepromenjeno: ${redovi.length - novih - izmenjenih}).`;
+  if (upozorenja.length) info += ' Upozorenja: ' + upozorenja.join(' | ');
+  els.kadrovskaUvozInfo.textContent = info;
+
+  els.kadrovskaUvozTbody.innerHTML = '';
+  redovi
+    .slice()
+    .sort((a, b) => (a.status === b.status ? 0 : a.status === 'isto' ? 1 : -1))
+    .forEach((r) => {
+      const tr = document.createElement('tr');
+      const oznaka = { novo: 'novo', izmenjeno: 'izmenjeno', isto: 'nepromenjeno' }[r.status];
+      tr.innerHTML = `
+        <td><input type="checkbox" class="kadrovska-uvoz-checkbox" data-matbr="${escapeAttr(r.mat_br)}" ${r.status === 'isto' ? '' : 'checked'} /></td>
+        <td>${escapeHtml(r.mat_br)}</td>
+        <td>${escapeHtml(r.prezime_ime || '')}</td>
+        <td>${escapeHtml(r.jmbg || '')}</td>
+        <td>${escapeHtml(r.datum_rodjenja ? formatDatumIso(r.datum_rodjenja) : '')}</td>
+        <td>${escapeHtml(r.ime_oca || '')}</td>
+        <td>${oznaka}</td>
+      `;
+      els.kadrovskaUvozTbody.appendChild(tr);
+    });
+}
+
+els.kadrovskaUvozSve.addEventListener('change', () => {
+  document.querySelectorAll('.kadrovska-uvoz-checkbox').forEach((cb) => {
+    cb.checked = els.kadrovskaUvozSve.checked;
+  });
+});
+
+els.kadrovskaUvozUpisiBtn.addEventListener('click', async () => {
+  if (!kadrovskaUvozPodaci) return;
+  els.kadrovskaUvozError.classList.add('hidden');
+
+  const izabrani = Array.from(document.querySelectorAll('.kadrovska-uvoz-checkbox'))
+    .filter((cb) => cb.checked)
+    .map((cb) => cb.dataset.matbr);
+
+  if (!izabrani.length) {
+    els.kadrovskaUvozError.textContent = 'Nijedan red nije izabran.';
+    els.kadrovskaUvozError.classList.remove('hidden');
+    return;
+  }
+
+  const originalLabel = els.kadrovskaUvozUpisiBtn.textContent;
+  els.kadrovskaUvozUpisiBtn.disabled = true;
+  els.kadrovskaUvozUpisiBtn.textContent = 'Upisujem...';
+
+  try {
+    const sada = new Date().toISOString();
+    const zaUpis = izabrani.map((matBr) => {
+      const iz = kadrovskaUvozPodaci.get(matBr);
+      const red = { mat_br: matBr, azurirano_at: sada };
+      if (iz.jmbg) red.jmbg = iz.jmbg;
+      if (iz.datum_rodjenja) red.datum_rodjenja = iz.datum_rodjenja;
+      if (iz.ime_oca) red.ime_oca = iz.ime_oca;
+      return red;
+    });
+
+    const { error } = await supabaseClient
+      .schema('bzr')
+      .from('zaposleni_licni_podaci')
+      .upsert(zaUpis, { onConflict: 'mat_br' });
+
+    if (error) throw new Error(error.message);
+
+    els.kadrovskaUvozInfo.textContent = `Upisano ${zaUpis.length} zapisa u BZR evidenciju.`;
+    els.kadrovskaUvozPregled.classList.add('hidden');
+
+    // Ako je trenutno otvoren neki zaposleni, osveži mu prikazana polja.
+    if (trenutniZaposleni) await ucitajLicnePodatkeZaUput(trenutniZaposleni.mat_br);
+  } catch (err) {
+    els.kadrovskaUvozError.textContent = 'Greška pri upisu: ' + (err.message || err);
+    els.kadrovskaUvozError.classList.remove('hidden');
+  } finally {
+    els.kadrovskaUvozUpisiBtn.disabled = false;
+    els.kadrovskaUvozUpisiBtn.textContent = originalLabel;
+  }
 });
 
 // ---------- START ----------
