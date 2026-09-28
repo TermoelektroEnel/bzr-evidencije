@@ -290,6 +290,14 @@
         <label for="oprema-pregled-napomena">Napomena</label>
         <textarea id="oprema-pregled-napomena"></textarea>
 
+        <label>Stručni nalaz (PDF) — čuva se bezbedno na Supabase-u</label>
+        <div class="file-picker-row">
+          <button type="button" class="secondary" id="oprema-pregled-browse-btn">Izaberi fajl...</button>
+          <input type="file" id="oprema-pregled-file" accept=".pdf" class="hidden" />
+          <span class="info-msg" id="oprema-pregled-filename">Nije izabran fajl</span>
+        </div>
+        <p class="info-msg">Fajl se otprema na Supabase tek kada klikneš "Sačuvaj pregled". Kad prođe datum sledećeg pregleda, na listi će se pojaviti podsetnik da nalaz preuzmeš na disk i arhiviraš.</p>
+
         <button type="submit" class="primary">Sačuvaj pregled</button>
         <div class="error-msg hidden" id="oprema-pregled-error"></div>
       </form>

@@ -93,6 +93,9 @@ const els = {
   opremaPregledSledeci: document.getElementById('oprema-pregled-sledeci'),
   opremaPregledNapomena: document.getElementById('oprema-pregled-napomena'),
   opremaPregledError: document.getElementById('oprema-pregled-error'),
+  opremaPregledBrowseBtn: document.getElementById('oprema-pregled-browse-btn'),
+  opremaPregledFile: document.getElementById('oprema-pregled-file'),
+  opremaPregledFilename: document.getElementById('oprema-pregled-filename'),
 
   // Povrede na radu
   povredaNoviBtn: document.getElementById('povreda-novi-btn'),
@@ -128,6 +131,11 @@ const IZVESTAJ_BUCKET = 'lekarski-izvestaji';
 
 // Koliko dugo signed URL za pregled/preuzimanje izveštaja važi (u sekundama)
 const IZVESTAJ_SIGNED_URL_TTL = 300; // 5 minuta
+
+// Isti princip za stručne nalaze opreme (Storage bucket "oprema-strucni-nalazi")
+const OPREMA_NALAZ_BUCKET = 'oprema-strucni-nalazi';
+const OPREMA_NALAZ_SIGNED_URL_TTL = 300; // 5 minuta
+let trenutniOpremaNalazFile = null; // File objekat iz <input type="file">, otprema se tek pri submit-u forme
 
 // ---------- LOKALNI FAJLOVI (obrazac 6) ----------
 
@@ -251,6 +259,16 @@ els.izvestajFile.addEventListener('change', () => {
   const file = els.izvestajFile.files[0];
   trenutniIzvestajFile = file || null;
   els.izvestajFilename.textContent = file ? file.name : 'Nije izabran fajl';
+});
+
+// Stručni nalaz opreme: isti princip — fajl se bira ovde, otprema se na Supabase
+// Storage tek pri submit-u forme (vidi els.opremaNoviPregledForm handler).
+els.opremaPregledBrowseBtn.addEventListener('click', () => els.opremaPregledFile.click());
+
+els.opremaPregledFile.addEventListener('change', () => {
+  const file = els.opremaPregledFile.files[0];
+  trenutniOpremaNalazFile = file || null;
+  els.opremaPregledFilename.textContent = file ? file.name : 'Nije izabran fajl';
 });
 
 setupFilePicker({
@@ -1241,19 +1259,118 @@ async function loadOpremaPregledi(opremaId) {
     return;
   }
 
-  els.opremaPregrediList.innerHTML = data.map((p) => `
+  // Za nalaze koji su na Supabase Storage-u, generiši kratkotrajni signed URL
+  // za pregled/preuzimanje (bucket je privatan).
+  const signedUrls = {};
+  await Promise.all(
+    data
+      .filter((p) => p.strucni_nalaz_storage_path)
+      .map(async (p) => {
+        const { data: signed } = await supabaseClient
+          .storage
+          .from(OPREMA_NALAZ_BUCKET)
+          .createSignedUrl(p.strucni_nalaz_storage_path, OPREMA_NALAZ_SIGNED_URL_TTL);
+        if (signed) signedUrls[p.id] = signed.signedUrl;
+      })
+  );
+
+  const danasIso = new Date().toISOString().slice(0, 10);
+
+  els.opremaPregrediList.innerHTML = data.map((p) => {
+    // Podsetnik za arhiviranje: nalaz je i dalje na Supabase-u, rok (datum sledećeg
+    // pregleda) je prošao, i još nije arhiviran.
+    const zaArhiviranje = !!p.strucni_nalaz_storage_path && !p.strucni_nalaz_arhiviran && !!p.datum_sledeceg && p.datum_sledeceg < danasIso;
+
+    return `
     <div class="pregled-item">
       <div><strong>${escapeHtml(p.datum_pregleda)}</strong>${p.broj_nalaza ? ` — br. nalaza: ${escapeHtml(p.broj_nalaza)}` : ''}</div>
       ${p.datum_sledeceg ? `<div>Sledeći pregled: ${escapeHtml(p.datum_sledeceg)}</div>` : ''}
       ${p.napomena ? `<div>Napomena: ${escapeHtml(p.napomena)}</div>` : ''}
+      <div class="pregled-links">
+        ${p.strucni_nalaz_storage_path ? (
+          signedUrls[p.id]
+            ? `<a href="${signedUrls[p.id]}" target="_blank" rel="noopener">Stručni nalaz</a>`
+            : `<span class="info-msg">Nalaz: link trenutno nije dostupan, osveži stranicu</span>`
+        ) : ''}
+        ${(!p.strucni_nalaz_storage_path && p.strucni_nalaz_arhiviran) ? `<span class="badge">Nalaz arhiviran lokalno</span>` : ''}
+      </div>
+      ${zaArhiviranje ? `
+        <div class="arhiviranje-podsetnik">
+          <span>⚠ Rok je istekao (sledeći pregled: ${formatDatumIso(p.datum_sledeceg)}) — vreme je da arhiviraš ovaj nalaz.</span>
+          <button type="button" class="secondary btn-arhiviraj-nalaz" data-id="${p.id}" data-path="${escapeAttr(p.strucni_nalaz_storage_path)}">Preuzmi i ukloni sa Supabase-a</button>
+        </div>
+      ` : ''}
       <div class="pregled-actions">
         <button type="button" class="danger-link btn-obrisi-opremu-pregled" data-id="${p.id}">Obriši pregled</button>
       </div>
     </div>
-  `).join('');
+  `;
+  }).join('');
+}
+
+// Preuzima stručni nalaz sa Supabase Storage-a na disk korisnika, pa (posle potvrde)
+// trajno uklanja fajl sa Supabase-a i markira red kao arhiviran — isti princip kao
+// arhivirajIzvestaj() za lekarske preglede.
+async function arhivirajNalazOpreme(id, storagePath, btn) {
+  const originalLabel = btn.textContent;
+  btn.disabled = true;
+
+  try {
+    btn.textContent = 'Preuzimanje...';
+    const { data: signed, error: signErr } = await supabaseClient
+      .storage
+      .from(OPREMA_NALAZ_BUCKET)
+      .createSignedUrl(storagePath, OPREMA_NALAZ_SIGNED_URL_TTL);
+
+    if (signErr || !signed) {
+      throw new Error('Nije moguće generisati link za preuzimanje: ' + (signErr ? signErr.message : 'nepoznata greška'));
+    }
+
+    const resp = await fetch(signed.signedUrl);
+    if (!resp.ok) throw new Error('Preuzimanje fajla nije uspelo (HTTP ' + resp.status + ').');
+    const blob = await resp.blob();
+    const filename = storagePath.split('/').pop() || 'strucni-nalaz.pdf';
+    triggerDownload(blob, filename);
+
+    const potvrda = confirm(
+      'Fajl je preuzet u tvoj folder za preuzimanja (Downloads).\n\n' +
+      'Proveri da je fajl stvarno stigao na disk, pa potvrdi da ga trajno uklonim sa Supabase-a.'
+    );
+    if (!potvrda) {
+      btn.textContent = originalLabel;
+      btn.disabled = false;
+      return;
+    }
+
+    btn.textContent = 'Uklanjanje sa Supabase-a...';
+    const { error: removeErr } = await supabaseClient.storage.from(OPREMA_NALAZ_BUCKET).remove([storagePath]);
+    if (removeErr) throw new Error('Uklanjanje sa Supabase-a nije uspelo: ' + removeErr.message);
+
+    const { error: updateErr } = await supabaseClient
+      .schema('bzr')
+      .from('pregledi_opreme')
+      .update({ strucni_nalaz_storage_path: null, strucni_nalaz_arhiviran: true })
+      .eq('id', id);
+
+    if (updateErr) {
+      throw new Error('Fajl je uklonjen sa Supabase-a, ali ažuriranje evidencije nije uspelo: ' + updateErr.message);
+    }
+
+    if (trenutnaOprema) await loadOpremaPregledi(trenutnaOprema.id);
+  } catch (err) {
+    alert(err.message);
+    btn.textContent = originalLabel;
+    btn.disabled = false;
+  }
 }
 
 els.opremaPregrediList.addEventListener('click', async (e) => {
+  const arhivirajBtn = e.target.closest('.btn-arhiviraj-nalaz');
+  if (arhivirajBtn) {
+    await arhivirajNalazOpreme(arhivirajBtn.dataset.id, arhivirajBtn.dataset.path, arhivirajBtn);
+    return;
+  }
+
   const btn = e.target.closest('.btn-obrisi-opremu-pregled');
   if (!btn) return;
 
@@ -1262,12 +1379,25 @@ els.opremaPregrediList.addEventListener('click', async (e) => {
   }
 
   btn.disabled = true;
+
+  // Ako pregled ima stručni nalaz na Supabase Storage-u, ukloni i njega da ne ostane siroče.
+  const { data: redZaBrisanje } = await supabaseClient
+    .schema('bzr')
+    .from('pregledi_opreme')
+    .select('strucni_nalaz_storage_path')
+    .eq('id', btn.dataset.id)
+    .maybeSingle();
+
   const { error } = await supabaseClient.schema('bzr').from('pregledi_opreme').delete().eq('id', btn.dataset.id);
 
   if (error) {
     alert('Greška pri brisanju: ' + error.message);
     btn.disabled = false;
     return;
+  }
+
+  if (redZaBrisanje && redZaBrisanje.strucni_nalaz_storage_path) {
+    await supabaseClient.storage.from(OPREMA_NALAZ_BUCKET).remove([redZaBrisanje.strucni_nalaz_storage_path]).catch(() => {});
   }
 
   if (trenutnaOprema) {
@@ -1280,27 +1410,66 @@ els.opremaNoviPregledForm.addEventListener('submit', async (e) => {
   els.opremaPregledError.classList.add('hidden');
   if (!trenutnaOprema) return;
 
-  const payload = {
-    oprema_id: trenutnaOprema.id,
-    broj_nalaza: els.opremaPregledBroj.value.trim() || null,
-    datum_pregleda: els.opremaPregledDatum.value,
-    datum_sledeceg: els.opremaPregledSledeci.value || null,
-    napomena: els.opremaPregledNapomena.value.trim() || null,
-  };
+  const submitBtn = els.opremaNoviPregledForm.querySelector('button[type="submit"]');
+  const originalLabel = submitBtn.textContent;
+  submitBtn.disabled = true;
 
-  const { error } = await supabaseClient.schema('bzr').from('pregledi_opreme').insert(payload);
+  let nalazStoragePath = null;
 
-  if (error) {
-    els.opremaPregledError.textContent = 'Greška pri čuvanju: ' + error.message;
+  try {
+    if (trenutniOpremaNalazFile) {
+      submitBtn.textContent = 'Otpremanje nalaza...';
+      const ext = (trenutniOpremaNalazFile.name.split('.').pop() || '').replace(/[^a-zA-Z0-9]/g, '');
+      nalazStoragePath = `${trenutnaOprema.id}/${Date.now()}${ext ? '.' + ext : ''}`;
+
+      const { error: uploadError } = await supabaseClient
+        .storage
+        .from(OPREMA_NALAZ_BUCKET)
+        .upload(nalazStoragePath, trenutniOpremaNalazFile, {
+          contentType: trenutniOpremaNalazFile.type || 'application/pdf',
+          upsert: false,
+        });
+
+      if (uploadError) {
+        throw new Error('Otpremanje nalaza na Supabase nije uspelo: ' + uploadError.message);
+      }
+    }
+
+    submitBtn.textContent = 'Čuvanje...';
+
+    const payload = {
+      oprema_id: trenutnaOprema.id,
+      broj_nalaza: els.opremaPregledBroj.value.trim() || null,
+      datum_pregleda: els.opremaPregledDatum.value,
+      datum_sledeceg: els.opremaPregledSledeci.value || null,
+      napomena: els.opremaPregledNapomena.value.trim() || null,
+      strucni_nalaz_storage_path: nalazStoragePath,
+    };
+
+    const { error } = await supabaseClient.schema('bzr').from('pregledi_opreme').insert(payload);
+
+    if (error) {
+      throw new Error('Greška pri čuvanju: ' + error.message);
+    }
+
+    els.opremaNoviPregledForm.reset();
+    trenutniOpremaNalazFile = null;
+    els.opremaPregledFilename.textContent = 'Nije izabran fajl';
+    els.opremaPregledFile.value = '';
+
+    // Novi pregled menja semafor status — osveži listu i vrati se na nju.
+    await loadOprema();
+    showOpremaView(els.opremaListView);
+  } catch (err) {
+    if (nalazStoragePath) {
+      await supabaseClient.storage.from(OPREMA_NALAZ_BUCKET).remove([nalazStoragePath]).catch(() => {});
+    }
+    els.opremaPregledError.textContent = err.message;
     els.opremaPregledError.classList.remove('hidden');
-    return;
+  } finally {
+    submitBtn.disabled = false;
+    submitBtn.textContent = originalLabel;
   }
-
-  els.opremaNoviPregledForm.reset();
-
-  // Novi pregled menja semafor status — osveži listu i vrati se na nju.
-  await loadOprema();
-  showOpremaView(els.opremaListView);
 });
 
 // ---- Obrazac 8 (.docx) ----
