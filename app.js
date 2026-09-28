@@ -12,6 +12,24 @@ const els = {
   modulZaposleni: document.getElementById('modul-zaposleni'),
   modulOprema: document.getElementById('modul-oprema'),
   modulPovrede: document.getElementById('modul-povrede'),
+  modulKatalog: document.getElementById('modul-katalog'),
+  katalogNoviBtn: document.getElementById('katalog-novi-btn'),
+  katalogForm: document.getElementById('katalog-form'),
+  katalogFormNaslov: document.getElementById('katalog-form-naslov'),
+  katalogSifraInput: document.getElementById('katalog-sifra-input'),
+  katalogPeriodicitetInput: document.getElementById('katalog-periodicitet-input'),
+  katalogOpisInput: document.getElementById('katalog-opis-input'),
+  katalogOpasnostiInput: document.getElementById('katalog-opasnosti-input'),
+  katalogSifraOpasnostiInput: document.getElementById('katalog-sifra-opasnosti-input'),
+  katalogMereInput: document.getElementById('katalog-mere-input'),
+  katalogLzoInput: document.getElementById('katalog-lzo-input'),
+  katalogPosebniUsloviInput: document.getElementById('katalog-posebni-uslovi-input'),
+  katalogAktivanInput: document.getElementById('katalog-aktivan-input'),
+  katalogOtkaziBtn: document.getElementById('katalog-otkazi-btn'),
+  katalogObrisiBtn: document.getElementById('katalog-obrisi-btn'),
+  katalogFormError: document.getElementById('katalog-form-error'),
+  katalogTbody: document.getElementById('katalog-tbody'),
+  katalogInfo: document.getElementById('katalog-info'),
   zaposleniView: document.getElementById('zaposleni-view'),
   detailView: document.getElementById('detail-view'),
   obrazac1Btn: document.getElementById('obrazac1-btn'),
@@ -357,12 +375,14 @@ function showLogin() {
   els.modulZaposleni.classList.add('hidden');
   els.modulOprema.classList.add('hidden');
   els.modulPovrede.classList.add('hidden');
+  els.modulKatalog.classList.add('hidden');
 }
 
 function switchModul(name) {
   els.modulZaposleni.classList.toggle('hidden', name !== 'zaposleni');
   els.modulOprema.classList.toggle('hidden', name !== 'oprema');
   els.modulPovrede.classList.toggle('hidden', name !== 'povrede');
+  els.modulKatalog.classList.toggle('hidden', name !== 'katalog');
   els.navTabs.forEach((btn) => {
     btn.classList.toggle('active', btn.dataset.modul === name);
   });
@@ -376,6 +396,9 @@ function switchModul(name) {
   if (name === 'povrede') {
     loadPovrede();
     popuniPovredaZaposleniSelect();
+  }
+  if (name === 'katalog') {
+    loadKatalog();
   }
 }
 
@@ -2001,6 +2024,193 @@ async function generisiObrazac2() {
 }
 
 els.obrazac2Btn.addEventListener('click', generisiObrazac2);
+
+// ---------- KATALOG RADNIH MESTA (administracija kroz UI) ----------
+// Sadržaj koji se ovde unosi koristi se za Obrazac 1, Obrazac 6 i Uput za
+// periodični lekarski pregled. Tabela bzr.radna_mesta_rizik nema svoj naziv
+// radnog mesta -- naziv (radi prikaza) uzimamo iz evidencije zaposlenih
+// (zaposleniCache), po istoj šifri radnog mesta; ako trenutno nema nijednog
+// zaposlenog na toj šifri, prikazujemo samo šifru.
+
+let katalogCache = [];
+let trenutniKatalogSifra = null; // null => forma je za NOVO radno mesto
+
+const KATALOG_POLJA_ZA_POPUNJENOST = ['opis_posla', 'opasnosti', 'mere', 'lzo_lista', 'posebni_zdravstveni_uslovi'];
+
+function nazivRadnogMestaZaSifru(sifra) {
+  const z = zaposleniCache.find((x) => x.sifra_radnog_mesta === sifra);
+  return (z && z.radno_mesto) || null;
+}
+
+async function loadKatalog() {
+  els.katalogInfo.textContent = 'Učitavanje...';
+  const { data, error } = await supabaseClient
+    .schema('bzr')
+    .from('radna_mesta_rizik')
+    .select('sifra_radnog_mesta, periodicitet_meseci, opis_posla, opasnosti, sifra_opasnosti, mere, lzo_lista, posebni_zdravstveni_uslovi, aktivan')
+    .order('sifra_radnog_mesta', { ascending: true });
+
+  if (error) {
+    els.katalogInfo.textContent = 'Greška pri učitavanju: ' + error.message;
+    return;
+  }
+
+  katalogCache = data || [];
+  renderKatalogTable();
+}
+
+function renderKatalogTable() {
+  els.katalogInfo.textContent = `Ukupno radnih mesta u katalogu: ${katalogCache.length}`;
+  els.katalogTbody.innerHTML = '';
+
+  katalogCache.forEach((r) => {
+    const naziv = nazivRadnogMestaZaSifru(r.sifra_radnog_mesta);
+    const popunjeno = KATALOG_POLJA_ZA_POPUNJENOST.filter((polje) => r[polje] && String(r[polje]).trim()).length;
+    const ukupno = KATALOG_POLJA_ZA_POPUNJENOST.length;
+    const boja = popunjeno === ukupno ? 'green' : popunjeno === 0 ? 'red' : 'orange';
+
+    const tr = document.createElement('tr');
+    tr.className = 'row-clickable';
+    tr.innerHTML = `
+      <td>${escapeHtml(r.sifra_radnog_mesta)}</td>
+      <td>${naziv ? escapeHtml(naziv) : '<span class="info-msg">(nema trenutno zaposlenih na ovoj šifri)</span>'}</td>
+      <td><span class="rizik-dot rizik-dot-${boja}"></span>${popunjeno}/${ukupno}</td>
+      <td>${r.aktivan ? 'da' : 'ne'}</td>
+    `;
+    tr.addEventListener('click', () => otvoriKatalogForma(r.sifra_radnog_mesta));
+    els.katalogTbody.appendChild(tr);
+  });
+}
+
+function praznaKatalogForma() {
+  els.katalogFormError.classList.add('hidden');
+  els.katalogSifraInput.value = '';
+  els.katalogSifraInput.disabled = false;
+  els.katalogPeriodicitetInput.value = '';
+  els.katalogOpisInput.value = '';
+  els.katalogOpasnostiInput.value = '';
+  els.katalogSifraOpasnostiInput.value = '';
+  els.katalogMereInput.value = '';
+  els.katalogLzoInput.value = '';
+  els.katalogPosebniUsloviInput.value = '';
+  els.katalogAktivanInput.checked = true;
+}
+
+els.katalogNoviBtn.addEventListener('click', () => {
+  trenutniKatalogSifra = null;
+  praznaKatalogForma();
+  els.katalogFormNaslov.textContent = 'Novo radno mesto';
+  els.katalogObrisiBtn.classList.add('hidden');
+  els.katalogForm.classList.remove('hidden');
+  els.katalogForm.scrollIntoView({ behavior: 'smooth', block: 'start' });
+});
+
+function otvoriKatalogForma(sifra) {
+  const r = katalogCache.find((x) => x.sifra_radnog_mesta === sifra);
+  if (!r) return;
+
+  trenutniKatalogSifra = sifra;
+  praznaKatalogForma();
+
+  els.katalogSifraInput.value = r.sifra_radnog_mesta || '';
+  els.katalogSifraInput.disabled = true; // šifra je ključ -- ne menja se posle unosa
+  els.katalogPeriodicitetInput.value = r.periodicitet_meseci != null ? r.periodicitet_meseci : '';
+  els.katalogOpisInput.value = r.opis_posla || '';
+  els.katalogOpasnostiInput.value = r.opasnosti || '';
+  els.katalogSifraOpasnostiInput.value = r.sifra_opasnosti || '';
+  els.katalogMereInput.value = r.mere || '';
+  els.katalogLzoInput.value = r.lzo_lista || '';
+  els.katalogPosebniUsloviInput.value = r.posebni_zdravstveni_uslovi || '';
+  els.katalogAktivanInput.checked = !!r.aktivan;
+
+  const naziv = nazivRadnogMestaZaSifru(sifra);
+  els.katalogFormNaslov.textContent = naziv ? `${sifra} — ${naziv}` : `Radno mesto ${sifra}`;
+  els.katalogObrisiBtn.classList.remove('hidden');
+  els.katalogForm.classList.remove('hidden');
+  els.katalogForm.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+els.katalogOtkaziBtn.addEventListener('click', () => {
+  els.katalogForm.classList.add('hidden');
+});
+
+els.katalogForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  els.katalogFormError.classList.add('hidden');
+
+  const sifra = els.katalogSifraInput.value.trim();
+  if (!sifra) {
+    els.katalogFormError.textContent = 'Unesi šifru radnog mesta.';
+    els.katalogFormError.classList.remove('hidden');
+    return;
+  }
+
+  const payload = {
+    periodicitet_meseci: els.katalogPeriodicitetInput.value ? parseInt(els.katalogPeriodicitetInput.value, 10) : null,
+    opis_posla: els.katalogOpisInput.value.trim() || null,
+    opasnosti: els.katalogOpasnostiInput.value.trim() || null,
+    sifra_opasnosti: els.katalogSifraOpasnostiInput.value.trim() || null,
+    mere: els.katalogMereInput.value.trim() || null,
+    lzo_lista: els.katalogLzoInput.value.trim() || null,
+    posebni_zdravstveni_uslovi: els.katalogPosebniUsloviInput.value.trim() || null,
+    aktivan: els.katalogAktivanInput.checked,
+  };
+
+  const submitBtn = els.katalogForm.querySelector('button[type="submit"]');
+  submitBtn.disabled = true;
+
+  let error;
+  if (trenutniKatalogSifra === null) {
+    // Novo radno mesto -- proveri da već ne postoji (šifra je ključ).
+    if (katalogCache.some((r) => r.sifra_radnog_mesta === sifra)) {
+      submitBtn.disabled = false;
+      els.katalogFormError.textContent = `Radno mesto sa šifrom "${sifra}" već postoji u katalogu.`;
+      els.katalogFormError.classList.remove('hidden');
+      return;
+    }
+    ({ error } = await supabaseClient
+      .schema('bzr')
+      .from('radna_mesta_rizik')
+      .insert({ sifra_radnog_mesta: sifra, ...payload }));
+  } else {
+    ({ error } = await supabaseClient
+      .schema('bzr')
+      .from('radna_mesta_rizik')
+      .update(payload)
+      .eq('sifra_radnog_mesta', trenutniKatalogSifra));
+  }
+
+  submitBtn.disabled = false;
+
+  if (error) {
+    els.katalogFormError.textContent = 'Greška pri čuvanju: ' + error.message;
+    els.katalogFormError.classList.remove('hidden');
+    return;
+  }
+
+  els.katalogForm.classList.add('hidden');
+  await loadKatalog();
+});
+
+els.katalogObrisiBtn.addEventListener('click', async () => {
+  if (trenutniKatalogSifra === null) return;
+  if (!confirm(`Obrisati radno mesto "${trenutniKatalogSifra}" iz kataloga? Ovo ne briše zaposlene, samo opis/rizike/mere za ovu šifru.`)) return;
+
+  const { error } = await supabaseClient
+    .schema('bzr')
+    .from('radna_mesta_rizik')
+    .delete()
+    .eq('sifra_radnog_mesta', trenutniKatalogSifra);
+
+  if (error) {
+    els.katalogFormError.textContent = 'Greška pri brisanju: ' + error.message;
+    els.katalogFormError.classList.remove('hidden');
+    return;
+  }
+
+  els.katalogForm.classList.add('hidden');
+  await loadKatalog();
+});
 
 // ---------- START ----------
 

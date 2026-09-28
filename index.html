@@ -19,6 +19,7 @@
   <button type="button" class="nav-tab active" data-modul="zaposleni">Zaposleni</button>
   <button type="button" class="nav-tab" data-modul="oprema">Oprema za rad</button>
   <button type="button" class="nav-tab" data-modul="povrede">Povrede na radu</button>
+  <button type="button" class="nav-tab" data-modul="katalog">Katalog radnih mesta</button>
 </nav>
 
 <main>
@@ -416,6 +417,67 @@
       <tbody id="povreda-tbody"></tbody>
     </table>
     <p class="info-msg" id="povreda-info"></p>
+  </section>
+
+  <!-- MODUL: KATALOG RADNIH MESTA -->
+  <section id="modul-katalog" class="panel hidden">
+    <div class="panel-header-row">
+      <h2>Katalog radnih mesta sa povećanim rizikom</h2>
+      <div>
+        <button type="button" class="secondary" id="katalog-novi-btn">+ Dodaj radno mesto</button>
+      </div>
+    </div>
+    <p class="info-msg">Ovde se popunjava sadržaj koji se koristi za generisanje Obrasca 1, Obrasca 6 i Uputa za periodični lekarski pregled: opis posla, procenjeni rizici, mere, LZO i posebni zdravstveni uslovi po radnom mestu (šifri).</p>
+
+    <!-- FORMA ZA NOVO/IZMENU RADNOG MESTA -->
+    <form id="katalog-form" class="hidden" style="margin-bottom: 18px; border: 1px solid var(--border); border-radius: var(--radius); padding: 14px;">
+      <h3 id="katalog-form-naslov" style="margin-top:0;">Novo radno mesto</h3>
+
+      <label for="katalog-sifra-input">Šifra radnog mesta</label>
+      <input type="text" id="katalog-sifra-input" required />
+      <p class="info-msg" id="katalog-sifra-napomena">Ista šifra kao u evidenciji zaposlenih (kolona sifra_radnog_mesta).</p>
+
+      <label for="katalog-periodicitet-input">Periodičnost lekarskog pregleda (meseci)</label>
+      <input type="number" id="katalog-periodicitet-input" min="1" placeholder="npr. 12" />
+
+      <label for="katalog-opis-input">Opis posla na radnom mestu</label>
+      <textarea id="katalog-opis-input"></textarea>
+
+      <label for="katalog-opasnosti-input">Procenjeni rizici / opasnosti (utvrđeni Aktom o proceni rizika)</label>
+      <textarea id="katalog-opasnosti-input"></textarea>
+
+      <label for="katalog-sifra-opasnosti-input">Šifre opasnosti iz Akta (opciono)</label>
+      <input type="text" id="katalog-sifra-opasnosti-input" placeholder="npr. 01, 16, 21, 28" />
+
+      <label for="katalog-mere-input">Mere za bezbedan i zdrav rad</label>
+      <textarea id="katalog-mere-input"></textarea>
+
+      <label for="katalog-lzo-input">Lična zaštitna oprema (LZO)</label>
+      <textarea id="katalog-lzo-input"></textarea>
+
+      <label for="katalog-posebni-uslovi-input">Posebni zdravstveni uslovi (za Uput za lekarski pregled)</label>
+      <textarea id="katalog-posebni-uslovi-input"></textarea>
+
+      <label><input type="checkbox" id="katalog-aktivan-input" checked /> Aktivno radno mesto</label>
+
+      <button type="submit" class="primary">Sačuvaj</button>
+      <button type="button" class="secondary" id="katalog-otkazi-btn">Otkaži</button>
+      <button type="button" class="danger-link hidden" id="katalog-obrisi-btn">Obriši radno mesto</button>
+      <div class="error-msg hidden" id="katalog-form-error"></div>
+    </form>
+
+    <table id="katalog-table">
+      <thead>
+        <tr>
+          <th>Šifra</th>
+          <th>Naziv radnog mesta</th>
+          <th>Popunjeno</th>
+          <th>Aktivno</th>
+        </tr>
+      </thead>
+      <tbody id="katalog-tbody"></tbody>
+    </table>
+    <p class="info-msg" id="katalog-info"></p>
   </section>
 
 </main>
