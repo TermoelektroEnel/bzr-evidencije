@@ -174,6 +174,38 @@ function escapeHtml(str) {
   return String(str == null ? '' : str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
+// Transliteracija srpske latinice u ćirilicu — koristi se samo za Obrazac 6, čiji je
+// zvanični šablon ceo na ćirilici, dok baza zaposlenih, katalog radnih mesta i forma za
+// unos čuvaju tekst na latinici. Datumi i brojevi prolaze nepromenjeni.
+// NAPOMENA: ako izvorni tekst nema ispravne srpske kvačice (č, ć, š, ž, đ) — npr. ako su
+// imena u bazi zaposlenih upisana bez njih (npr. "Djuric" umesto "Đurić") — transliteracija
+// ne može da pogodi tačno slovo (obično "s" bez kvačice uvek postane "с", nikad "ш", i sl.).
+// Ako primetiš da neko ime/pojam ispadne pogrešno, jedini pravi način da se to reši je da se
+// ispravi izvorni upis (dodaju kvačice) na mestu gde se unosi.
+function latinicaUCirilicu(text) {
+  if (!text) return text;
+
+  const digrafi = [
+    ['Nj', 'Њ'], ['NJ', 'Њ'], ['nj', 'њ'],
+    ['Lj', 'Љ'], ['LJ', 'Љ'], ['lj', 'љ'],
+    ['Dž', 'Џ'], ['DŽ', 'Џ'], ['dž', 'џ'],
+  ];
+
+  let rez = String(text);
+  for (const [lat, cir] of digrafi) {
+    rez = rez.split(lat).join(cir);
+  }
+
+  const mapa = {
+    A: 'А', B: 'Б', V: 'В', G: 'Г', D: 'Д', Đ: 'Ђ', E: 'Е', Ž: 'Ж', Z: 'З', I: 'И', J: 'Ј', K: 'К', L: 'Л',
+    M: 'М', N: 'Н', O: 'О', P: 'П', R: 'Р', S: 'С', T: 'Т', Ć: 'Ћ', U: 'У', F: 'Ф', H: 'Х', C: 'Ц', Č: 'Ч', Š: 'Ш',
+    a: 'а', b: 'б', v: 'в', g: 'г', d: 'д', đ: 'ђ', e: 'е', ž: 'ж', z: 'з', i: 'и', j: 'ј', k: 'к', l: 'л',
+    m: 'м', n: 'н', o: 'о', p: 'п', r: 'р', s: 'с', t: 'т', ć: 'ћ', u: 'у', f: 'ф', h: 'х', c: 'ц', č: 'ч', š: 'ш',
+  };
+
+  return rez.replace(/[A-Za-zĐđŽžĆćČčŠš]/g, (ch) => (mapa[ch] !== undefined ? mapa[ch] : ch));
+}
+
 function formatDatumSrpski(d) {
   const dd = String(d.getDate()).padStart(2, '0');
   const mm = String(d.getMonth() + 1).padStart(2, '0');
@@ -712,22 +744,26 @@ els.obrazac6GenerisiBtn.addEventListener('click', async () => {
 
     const danas = formatDatumSrpski(new Date());
 
+    // Šablon Obrasca 6 je ceo na ćirilici — sav tekst koji ubacujemo (iz baze, kataloga
+    // radnih mesta i forme, gde se sve čuva na latinici) transliterujemo pre umetanja,
+    // da fajl ne bi ispao mešovit. Datumi (danas) su brojevi, ne treba ih transliterovati.
     doc.render({
-      ime_prezime: trenutniZaposleni.prezime_ime || '',
-      radno_mesto: trenutniZaposleni.radno_mesto || '',
-      opis_posla: rmRow.opis_posla || '',
-      razlog_obuke: razlogObuke,
+      ime_prezime: latinicaUCirilicu(trenutniZaposleni.prezime_ime || ''),
+      radno_mesto: latinicaUCirilicu(trenutniZaposleni.radno_mesto || ''),
+      opis_posla: latinicaUCirilicu(rmRow.opis_posla || ''),
+      razlog_obuke: latinicaUCirilicu(razlogObuke),
       datum_obuke_teor: danas,
       datum_obuke_prakt: danas,
       datum_provere_teor: danas,
       datum_provere_prakt: danas,
-      lzo_lista: rmRow.lzo_lista || '',
+      lzo_lista: latinicaUCirilicu(rmRow.lzo_lista || ''),
       datum_lzo: danas,
-      opasnosti: rmRow.opasnosti || '',
-      mere: rmRow.mere || '',
-      obavestenja:
+      opasnosti: latinicaUCirilicu(rmRow.opasnosti || ''),
+      mere: latinicaUCirilicu(rmRow.mere || ''),
+      obavestenja: latinicaUCirilicu(
         `Upoznat sa Aktom o proceni rizika za radno mesto ${trenutniZaposleni.radno_mesto || ''} ` +
-        'i internim uputstvima poslodavca o bezbednosti i zdravlju na radu.',
+        'i internim uputstvima poslodavca o bezbednosti i zdravlju na radu.'
+      ),
     });
 
     const blob = doc.getZip().generate({
