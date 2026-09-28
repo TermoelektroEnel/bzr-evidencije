@@ -54,6 +54,14 @@ const els = {
   obrazac6RazlogInput: document.getElementById('obrazac6-razlog-input'),
   obrazac6GenerisiBtn: document.getElementById('obrazac6-generisi-btn'),
   obrazac6GenError: document.getElementById('obrazac6-gen-error'),
+  uputLekarskiSection: document.getElementById('uput-lekarski-section'),
+  uputImeOcevoPrezimeInput: document.getElementById('uput-ime-ocevo-prezime-input'),
+  uputJmbgInput: document.getElementById('uput-jmbg-input'),
+  uputDatumRodjenjaInput: document.getElementById('uput-datum-rodjenja-input'),
+  uputMestoRodjenjaInput: document.getElementById('uput-mesto-rodjenja-input'),
+  uputZanimanjeInput: document.getElementById('uput-zanimanje-input'),
+  uputGenerisiBtn: document.getElementById('uput-generisi-btn'),
+  uputGenError: document.getElementById('uput-gen-error'),
 
   // Oprema za rad
   opremaListView: document.getElementById('oprema-list-view'),
@@ -627,9 +635,36 @@ async function openDetail(matBr) {
     `Mat. br. ${trenutniZaposleni.mat_br} · ${trenutniZaposleni.radno_mesto || '—'} · ${trenutniZaposleni.radna_jedinica || '—'}${rizikBadge}`;
 
   prikaziRizikStatus(trenutniZaposleni);
+  await ucitajLicnePodatkeZaUput(matBr);
 
   showView(els.detailView);
   await loadPregledi(matBr);
+}
+
+// Lični podaci za "Uput za periodični lekarski pregled" (JMBG, datum/mesto rođenja,
+// zanimanje) -- ne dolaze iz Adamove baze, čuvaju se lokalno po zaposlenom
+// (bzr.zaposleni_licni_podaci) i sama aplikacija ih predlaže sledeći put.
+async function ucitajLicnePodatkeZaUput(matBr) {
+  els.uputImeOcevoPrezimeInput.value = '';
+  els.uputJmbgInput.value = '';
+  els.uputDatumRodjenjaInput.value = '';
+  els.uputMestoRodjenjaInput.value = '';
+  els.uputZanimanjeInput.value = '';
+
+  const { data, error } = await supabaseClient
+    .schema('bzr')
+    .from('zaposleni_licni_podaci')
+    .select('ime_ocevo_ime_prezime, jmbg, datum_rodjenja, mesto_rodjenja_opstina, zanimanje')
+    .eq('mat_br', matBr)
+    .maybeSingle();
+
+  if (error || !data) return;
+
+  els.uputImeOcevoPrezimeInput.value = data.ime_ocevo_ime_prezime || '';
+  els.uputJmbgInput.value = data.jmbg || '';
+  els.uputDatumRodjenjaInput.value = data.datum_rodjenja || '';
+  els.uputMestoRodjenjaInput.value = data.mesto_rodjenja_opstina || '';
+  els.uputZanimanjeInput.value = data.zanimanje || '';
 }
 
 // ---------- STATUS RIZIKA (ručni izuzetak od kataloga radnih mesta) ----------
@@ -653,6 +688,8 @@ function prikaziRizikStatus(z) {
 
   els.obrazac6Section.classList.toggle('hidden', !z.povecan_rizik);
   els.obrazac6GenError.classList.add('hidden');
+  els.uputLekarskiSection.classList.toggle('hidden', !z.povecan_rizik);
+  els.uputGenError.classList.add('hidden');
 }
 
 els.rizikSaveBtn.addEventListener('click', async () => {
@@ -786,6 +823,128 @@ els.obrazac6GenerisiBtn.addEventListener('click', async () => {
   } finally {
     els.obrazac6GenerisiBtn.disabled = false;
     els.obrazac6GenerisiBtn.textContent = originalLabel;
+  }
+});
+
+// ---------- UPUT ZA PERIODIČNI LEKARSKI PREGLED (generisanje .docx) ----------
+// Šablon je na latinici (za razliku od Obrasca 6) -- ne transliterujemo u ćirilicu.
+
+els.uputGenerisiBtn.addEventListener('click', async () => {
+  if (!trenutniZaposleni) return;
+  els.uputGenError.classList.add('hidden');
+
+  const matBr = trenutniZaposleni.mat_br;
+  const imeOcevoPrezime = els.uputImeOcevoPrezimeInput.value.trim();
+  const jmbg = els.uputJmbgInput.value.trim();
+  const datumRodjenjaIso = els.uputDatumRodjenjaInput.value; // YYYY-MM-DD ili ''
+  const mestoRodjenja = els.uputMestoRodjenjaInput.value.trim();
+  const zanimanje = els.uputZanimanjeInput.value.trim();
+
+  els.uputGenerisiBtn.disabled = true;
+  const originalLabel = els.uputGenerisiBtn.textContent;
+  els.uputGenerisiBtn.textContent = 'Generišem...';
+
+  try {
+    // Sačuvaj lične podatke za sledeći put (ne blokira generisanje ako ovo ne uspe).
+    await supabaseClient.schema('bzr').from('zaposleni_licni_podaci').upsert({
+      mat_br: matBr,
+      ime_ocevo_ime_prezime: imeOcevoPrezime || null,
+      jmbg: jmbg || null,
+      datum_rodjenja: datumRodjenjaIso || null,
+      mesto_rodjenja_opstina: mestoRodjenja || null,
+      zanimanje: zanimanje || null,
+      azurirano_at: new Date().toISOString(),
+    });
+
+    const { data: rmRow, error: rmError } = await supabaseClient
+      .schema('bzr')
+      .from('radna_mesta_rizik')
+      .select('opis_posla, opasnosti, posebni_zdravstveni_uslovi')
+      .eq('sifra_radnog_mesta', trenutniZaposleni.sifra_radnog_mesta)
+      .eq('aktivan', true)
+      .maybeSingle();
+
+    if (rmError) throw new Error('Greška pri čitanju kataloga radnih mesta: ' + rmError.message);
+
+    if (!rmRow || !rmRow.opis_posla || !rmRow.opasnosti || !rmRow.posebni_zdravstveni_uslovi) {
+      throw new Error(
+        `Za radno mesto "${trenutniZaposleni.radno_mesto || ''}" još nisu popunjeni opis posla / procenjeni ` +
+        'rizici / posebni zdravstveni uslovi u katalogu (tabela radna_mesta_rizik). Dopuni ih pa pokušaj ponovo.'
+      );
+    }
+
+    // Prethodni (poslednji unet) periodični pregled -- ako postoji.
+    const { data: poslednjiPregled, error: pregledError } = await supabaseClient
+      .schema('bzr')
+      .from('lekarski_pregledi')
+      .select('datum_pregleda, ustanova, rezultat')
+      .eq('mat_br', matBr)
+      .order('datum_pregleda', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (pregledError) throw new Error('Greška pri čitanju lekarskih pregleda: ' + pregledError.message);
+
+    // Sledeći redni broj uputa (atomski, počev od 274).
+    const { data: brojUputa, error: brojError } = await supabaseClient
+      .schema('bzr')
+      .rpc('next_uput_lekarski_broj');
+
+    if (brojError) throw new Error('Greška pri dodeli rednog broja uputa: ' + brojError.message);
+
+    const resp = await fetch('templates/uput-lekarski-template.docx');
+    if (!resp.ok) throw new Error('Ne mogu da učitam šablon uputa (templates/uput-lekarski-template.docx).');
+    const templateBuf = await resp.arrayBuffer();
+
+    const zip = new window.PizZip(templateBuf);
+    const doc = new window.Docxtemplater(zip, { paragraphLoop: true, linebreaks: true });
+
+    const danas = formatDatumSrpski(new Date());
+
+    doc.render({
+      datum_izdavanja: danas,
+      broj_uputa: String(brojUputa),
+      ime_prezime_puno: imeOcevoPrezime,
+      jmbg: jmbg,
+      datum_rodjenja: datumRodjenjaIso ? formatDatumIso(datumRodjenjaIso) : '',
+      mesto_rodjenja_opstina: mestoRodjenja,
+      zanimanje: zanimanje,
+      radno_mesto: trenutniZaposleni.radno_mesto || '',
+      datum_prethodnog_pregleda: poslednjiPregled ? formatDatumIso(poslednjiPregled.datum_pregleda) : '',
+      ustanova_prethodnog_pregleda: (poslednjiPregled && poslednjiPregled.ustanova) || '',
+      rezultat_prethodnog_pregleda: (poslednjiPregled && poslednjiPregled.rezultat) || '',
+      opis_posla: rmRow.opis_posla || '',
+      opasnosti: rmRow.opasnosti || '',
+      posebni_zdravstveni_uslovi: rmRow.posebni_zdravstveni_uslovi || '',
+    });
+
+    const blob = doc.getZip().generate({
+      type: 'blob',
+      mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    });
+
+    // Evidencija izdatog uputa (radi praćenja, ne utiče na sam dokument).
+    await supabaseClient.schema('bzr').from('uput_lekarski_evidencija').insert({
+      redni_broj: brojUputa,
+      mat_br: matBr,
+      ime_prezime: trenutniZaposleni.prezime_ime || null,
+    });
+
+    const bezbedno = (trenutniZaposleni.prezime_ime || 'zaposleni').replace(/[^\p{L}\p{N}]+/gu, '_');
+    const nazivFajla = `Uput_lekarski_${brojUputa}_${bezbedno}_${new Date().toISOString().slice(0, 10)}.docx`;
+    triggerDownload(blob, nazivFajla);
+  } catch (err) {
+    let msg = err && err.message ? err.message : String(err);
+    if (err && err.properties && Array.isArray(err.properties.errors) && err.properties.errors.length) {
+      msg = err.properties.errors
+        .map((e) => (e.properties && e.properties.explanation) || e.message)
+        .join('; ');
+    }
+    els.uputGenError.textContent = 'Greška: ' + msg;
+    els.uputGenError.classList.remove('hidden');
+  } finally {
+    els.uputGenerisiBtn.disabled = false;
+    els.uputGenerisiBtn.textContent = originalLabel;
   }
 });
 
