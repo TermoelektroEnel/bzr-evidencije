@@ -17,6 +17,7 @@ const els = {
   katalogForm: document.getElementById('katalog-form'),
   katalogFormNaslov: document.getElementById('katalog-form-naslov'),
   katalogSifraInput: document.getElementById('katalog-sifra-input'),
+  katalogNazivInput: document.getElementById('katalog-naziv-input'),
   katalogPeriodicitetInput: document.getElementById('katalog-periodicitet-input'),
   katalogOpisInput: document.getElementById('katalog-opis-input'),
   katalogOpasnostiInput: document.getElementById('katalog-opasnosti-input'),
@@ -2067,27 +2068,21 @@ els.obrazac2Btn.addEventListener('click', generisiObrazac2);
 
 // ---------- KATALOG RADNIH MESTA (administracija kroz UI) ----------
 // Sadržaj koji se ovde unosi koristi se za Obrazac 1, Obrazac 6 i Uput za
-// periodični lekarski pregled. Tabela bzr.radna_mesta_rizik nema svoj naziv
-// radnog mesta -- naziv (radi prikaza) uzimamo iz evidencije zaposlenih
-// (zaposleniCache), po istoj šifri radnog mesta; ako trenutno nema nijednog
-// zaposlenog na toj šifri, prikazujemo samo šifru.
+// periodični lekarski pregled. Tabela bzr.radna_mesta_rizik ima svoju kolonu
+// naziv (obavezna) -- unosi se i čuva direktno ovde, ne izvodi se više iz
+// evidencije zaposlenih.
 
 let katalogCache = [];
 let trenutniKatalogSifra = null; // null => forma je za NOVO radno mesto
 
 const KATALOG_POLJA_ZA_POPUNJENOST = ['opis_posla', 'opasnosti', 'mere', 'lzo_lista', 'posebni_zdravstveni_uslovi'];
 
-function nazivRadnogMestaZaSifru(sifra) {
-  const z = zaposleniCache.find((x) => x.sifra_radnog_mesta === sifra);
-  return (z && z.radno_mesto) || null;
-}
-
 async function loadKatalog() {
   els.katalogInfo.textContent = 'Učitavanje...';
   const { data, error } = await supabaseClient
     .schema('bzr')
     .from('radna_mesta_rizik')
-    .select('sifra_radnog_mesta, periodicitet_meseci, opis_posla, opasnosti, sifra_opasnosti, mere, lzo_lista, posebni_zdravstveni_uslovi, aktivan')
+    .select('sifra_radnog_mesta, naziv, periodicitet_meseci, opis_posla, opasnosti, sifra_opasnosti, mere, lzo_lista, posebni_zdravstveni_uslovi, aktivan')
     .order('sifra_radnog_mesta', { ascending: true });
 
   if (error) {
@@ -2104,7 +2099,6 @@ function renderKatalogTable() {
   els.katalogTbody.innerHTML = '';
 
   katalogCache.forEach((r) => {
-    const naziv = nazivRadnogMestaZaSifru(r.sifra_radnog_mesta);
     const popunjeno = KATALOG_POLJA_ZA_POPUNJENOST.filter((polje) => r[polje] && String(r[polje]).trim()).length;
     const ukupno = KATALOG_POLJA_ZA_POPUNJENOST.length;
     const boja = popunjeno === ukupno ? 'green' : popunjeno === 0 ? 'red' : 'orange';
@@ -2113,7 +2107,7 @@ function renderKatalogTable() {
     tr.className = 'row-clickable';
     tr.innerHTML = `
       <td>${escapeHtml(r.sifra_radnog_mesta)}</td>
-      <td>${naziv ? escapeHtml(naziv) : '<span class="info-msg">(nema trenutno zaposlenih na ovoj šifri)</span>'}</td>
+      <td>${escapeHtml(r.naziv || '')}</td>
       <td><span class="rizik-dot rizik-dot-${boja}"></span>${popunjeno}/${ukupno}</td>
       <td>${r.aktivan ? 'da' : 'ne'}</td>
     `;
@@ -2126,6 +2120,7 @@ function praznaKatalogForma() {
   els.katalogFormError.classList.add('hidden');
   els.katalogSifraInput.value = '';
   els.katalogSifraInput.disabled = false;
+  els.katalogNazivInput.value = '';
   els.katalogPeriodicitetInput.value = '';
   els.katalogOpisInput.value = '';
   els.katalogOpasnostiInput.value = '';
@@ -2154,6 +2149,7 @@ function otvoriKatalogForma(sifra) {
 
   els.katalogSifraInput.value = r.sifra_radnog_mesta || '';
   els.katalogSifraInput.disabled = true; // šifra je ključ -- ne menja se posle unosa
+  els.katalogNazivInput.value = r.naziv || '';
   els.katalogPeriodicitetInput.value = r.periodicitet_meseci != null ? r.periodicitet_meseci : '';
   els.katalogOpisInput.value = r.opis_posla || '';
   els.katalogOpasnostiInput.value = r.opasnosti || '';
@@ -2163,8 +2159,7 @@ function otvoriKatalogForma(sifra) {
   els.katalogPosebniUsloviInput.value = r.posebni_zdravstveni_uslovi || '';
   els.katalogAktivanInput.checked = !!r.aktivan;
 
-  const naziv = nazivRadnogMestaZaSifru(sifra);
-  els.katalogFormNaslov.textContent = naziv ? `${sifra} — ${naziv}` : `Radno mesto ${sifra}`;
+  els.katalogFormNaslov.textContent = r.naziv ? `${sifra} — ${r.naziv}` : `Radno mesto ${sifra}`;
   els.katalogObrisiBtn.classList.remove('hidden');
   els.katalogForm.classList.remove('hidden');
   els.katalogForm.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -2185,7 +2180,15 @@ els.katalogForm.addEventListener('submit', async (e) => {
     return;
   }
 
+  const naziv = els.katalogNazivInput.value.trim();
+  if (!naziv) {
+    els.katalogFormError.textContent = 'Unesi naziv radnog mesta.';
+    els.katalogFormError.classList.remove('hidden');
+    return;
+  }
+
   const payload = {
+    naziv,
     periodicitet_meseci: els.katalogPeriodicitetInput.value ? parseInt(els.katalogPeriodicitetInput.value, 10) : null,
     opis_posla: els.katalogOpisInput.value.trim() || null,
     opasnosti: els.katalogOpasnostiInput.value.trim() || null,
