@@ -79,6 +79,9 @@ const els = {
   uputDatumRodjenjaInput: document.getElementById('uput-datum-rodjenja-input'),
   uputMestoRodjenjaInput: document.getElementById('uput-mesto-rodjenja-input'),
   uputZanimanjeInput: document.getElementById('uput-zanimanje-input'),
+  uputSacuvajBtn: document.getElementById('uput-sacuvaj-btn'),
+  uputSacuvajError: document.getElementById('uput-sacuvaj-error'),
+  uputSacuvajOk: document.getElementById('uput-sacuvaj-ok'),
   uputGenerisiBtn: document.getElementById('uput-generisi-btn'),
   uputGenError: document.getElementById('uput-gen-error'),
   kadrovskaUvozBtn: document.getElementById('kadrovska-uvoz-btn'),
@@ -754,6 +757,8 @@ function prikaziRizikStatus(z) {
   els.obrazac6GenError.classList.add('hidden');
   els.uputLekarskiSection.classList.toggle('hidden', !z.povecan_rizik);
   els.uputGenError.classList.add('hidden');
+  els.uputSacuvajError.classList.add('hidden');
+  els.uputSacuvajOk.classList.add('hidden');
 }
 
 els.rizikSaveBtn.addEventListener('click', async () => {
@@ -893,6 +898,45 @@ els.obrazac6GenerisiBtn.addEventListener('click', async () => {
 // ---------- UPUT ZA PERIODIČNI LEKARSKI PREGLED (generisanje .docx) ----------
 // Šablon je na latinici (za razliku od Obrasca 6) -- ne transliterujemo u ćirilicu.
 
+// Čita polja iz forme i upisuje ih u bzr.zaposleni_licni_podaci. Koristi ga i
+// dugme "Sačuvaj" i dugme "Generiši..." (ovo drugo i dalje generiše uput čak i
+// ako čuvanje ne uspe -- ali greška se uvek prikazuje, ne sme proći nezapaženo).
+async function sacuvajLicnePodatkeZaUput() {
+  if (!trenutniZaposleni) return { error: null };
+
+  const payload = {
+    mat_br: trenutniZaposleni.mat_br,
+    ime_ocevo_ime_prezime: els.uputImeOcevoPrezimeInput.value.trim() || null,
+    jmbg: els.uputJmbgInput.value.trim() || null,
+    datum_rodjenja: els.uputDatumRodjenjaInput.value || null, // YYYY-MM-DD ili ''
+    mesto_rodjenja_opstina: els.uputMestoRodjenjaInput.value.trim() || null,
+    zanimanje: els.uputZanimanjeInput.value.trim() || null,
+    azurirano_at: new Date().toISOString(),
+  };
+
+  const { error } = await supabaseClient.schema('bzr').from('zaposleni_licni_podaci').upsert(payload);
+  return { error };
+}
+
+els.uputSacuvajBtn.addEventListener('click', async () => {
+  if (!trenutniZaposleni) return;
+  els.uputSacuvajError.classList.add('hidden');
+  els.uputSacuvajOk.classList.add('hidden');
+
+  els.uputSacuvajBtn.disabled = true;
+  try {
+    const { error } = await sacuvajLicnePodatkeZaUput();
+    if (error) {
+      els.uputSacuvajError.textContent = 'Greška pri čuvanju: ' + error.message;
+      els.uputSacuvajError.classList.remove('hidden');
+    } else {
+      els.uputSacuvajOk.classList.remove('hidden');
+    }
+  } finally {
+    els.uputSacuvajBtn.disabled = false;
+  }
+});
+
 els.uputGenerisiBtn.addEventListener('click', async () => {
   if (!trenutniZaposleni) return;
   els.uputGenError.classList.add('hidden');
@@ -911,15 +955,7 @@ els.uputGenerisiBtn.addEventListener('click', async () => {
   try {
     // Sačuvaj lične podatke za sledeći put (ne blokira generisanje ako ovo ne uspe --
     // ali greška se MORA prikazati, ne sme proći nezapaženo kao do sada).
-    const { error: saveError } = await supabaseClient.schema('bzr').from('zaposleni_licni_podaci').upsert({
-      mat_br: matBr,
-      ime_ocevo_ime_prezime: imeOcevoPrezime || null,
-      jmbg: jmbg || null,
-      datum_rodjenja: datumRodjenjaIso || null,
-      mesto_rodjenja_opstina: mestoRodjenja || null,
-      zanimanje: zanimanje || null,
-      azurirano_at: new Date().toISOString(),
-    });
+    const { error: saveError } = await sacuvajLicnePodatkeZaUput();
     if (saveError) {
       els.uputGenError.textContent =
         'Napomena: lični podaci NISU sačuvani za sledeći put (greška: ' + saveError.message +
