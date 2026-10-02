@@ -127,7 +127,7 @@
       <p class="info-msg" id="detail-meta"></p>
 
       <h3>Status radnog mesta (povećan rizik)</h3>
-      <p class="info-msg" id="rizik-po-aktu-info"></p>
+      <div class="rizik-po-aktu-box" id="rizik-po-aktu-info"></div>
       <label for="rizik-override-select">Stvarni status ovog zaposlenog</label>
       <select id="rizik-override-select">
         <option value="">Automatski (prema Aktu o proceni rizika)</option>
@@ -456,12 +456,12 @@
   <!-- MODUL: KATALOG RADNIH MESTA -->
   <section id="modul-katalog" class="panel hidden">
     <div class="panel-header-row">
-      <h2>Katalog radnih mesta sa povećanim rizikom</h2>
+      <h2>Katalog radnih mesta</h2>
       <div>
         <button type="button" class="secondary" id="katalog-novi-btn">+ Dodaj radno mesto</button>
       </div>
     </div>
-    <p class="info-msg">Ovde se popunjava sadržaj koji se koristi za generisanje Obrasca 1, Obrasca 6 i Uputa za periodični lekarski pregled: opis posla, procenjeni rizici, mere, LZO i posebni zdravstveni uslovi po radnom mestu (šifri).</p>
+    <p class="info-msg">Ovde se popunjava sadržaj koji se koristi za generisanje Obrasca 1, Obrasca 6 i Uputa za periodični lekarski pregled: opis posla, procenjeni rizici, mere, LZO i posebni zdravstveni uslovi po radnom mestu (šifri). Katalog sadrži SVA radna mesta (Obrazac 6 se generiše za sve zaposlene) — polje "povećan rizik" posebno obeležava ona radna mesta koja Akt o proceni rizika svrstava u povećan rizik.</p>
 
     <!-- FORMA ZA NOVO/IZMENU RADNOG MESTA -->
     <form id="katalog-form" class="hidden" style="margin-bottom: 18px; border: 1px solid var(--border); border-radius: var(--radius); padding: 14px;">
@@ -473,6 +473,9 @@
 
       <label for="katalog-naziv-input">Naziv radnog mesta</label>
       <input type="text" id="katalog-naziv-input" required />
+
+      <label><input type="checkbox" id="katalog-povecan-rizik-input" /> Radno mesto sa povećanim rizikom (po Aktu o proceni rizika)</label>
+      <p class="info-msg">Štiklirano samo za radna mesta koja Akt o proceni rizika svrstava u povećan rizik. Od ovoga zavisi da li se zaposlenom na ovom radnom mestu prikazuje "Uput za periodični lekarski pregled" i da li se po default-u smatra "povećan rizik" (osim ako postoji ručni izuzetak kod konkretnog zaposlenog). Obrazac 6 se generiše za sva radna mesta, bez obzira na ovo polje.</p>
 
       <label for="katalog-periodicitet-input">Periodičnost lekarskog pregleda (meseci)</label>
       <input type="number" id="katalog-periodicitet-input" min="1" placeholder="npr. 12" />
@@ -508,6 +511,7 @@
         <tr>
           <th>Šifra</th>
           <th>Naziv radnog mesta</th>
+          <th>Povećan rizik</th>
           <th>Popunjeno</th>
           <th>Aktivno</th>
         </tr>

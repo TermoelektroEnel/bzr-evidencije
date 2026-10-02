@@ -220,6 +220,33 @@ tr.row-clickable:hover { background: #f0f4f8; }
 .rizik-dot-orange { background: #e08e0b; }
 .rizik-dot-green { background: #2e9e44; }
 
+/* Istaknuta kutija sa statusom radnog mesta po Aktu o proceni rizika */
+.rizik-po-aktu-box {
+  display: block;
+  margin: 10px 0 16px;
+  padding: 12px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+.rizik-po-aktu-box strong {
+  font-size: 18px;
+}
+
+.rizik-po-aktu-box.rizik-po-aktu-ne {
+  background: #eaf7ec;
+  border-color: #bfe3c4;
+  color: #155724;
+}
+
+.rizik-po-aktu-box.rizik-po-aktu-da {
+  background: #fdecea;
+  border-color: #f3c2bd;
+  color: #7a221d;
+}
+
 /* Detalji zaposlenog */
 #detail-view .back-link {
   display: inline-block;

@@ -18,6 +18,7 @@ const els = {
   katalogFormNaslov: document.getElementById('katalog-form-naslov'),
   katalogSifraInput: document.getElementById('katalog-sifra-input'),
   katalogNazivInput: document.getElementById('katalog-naziv-input'),
+  katalogPovecanRizikInput: document.getElementById('katalog-povecan-rizik-input'),
   katalogPeriodicitetInput: document.getElementById('katalog-periodicitet-input'),
   katalogOpisInput: document.getElementById('katalog-opis-input'),
   katalogOpasnostiInput: document.getElementById('katalog-opasnosti-input'),
@@ -740,9 +741,14 @@ function prikaziRizikStatus(z) {
   els.rizikError.classList.add('hidden');
   els.rizikSavedMsg.classList.add('hidden');
 
-  els.rizikPoAktuInfo.innerHTML = z.povecan_rizik_po_aktu
-    ? 'Prema Aktu o proceni rizika, ovo radno mesto je <strong>sa povećanim rizikom</strong>.'
-    : 'Prema Aktu o proceni rizika, ovo radno mesto <strong>nije</strong> sa povećanim rizikom.';
+  els.rizikPoAktuInfo.classList.remove('rizik-po-aktu-da', 'rizik-po-aktu-ne');
+  if (z.povecan_rizik_po_aktu) {
+    els.rizikPoAktuInfo.innerHTML = 'Prema Aktu o proceni rizika, ovo radno mesto <strong>JESTE</strong> sa povećanim rizikom.';
+    els.rizikPoAktuInfo.classList.add('rizik-po-aktu-da');
+  } else {
+    els.rizikPoAktuInfo.innerHTML = 'Prema Aktu o proceni rizika, ovo radno mesto <strong>NIJE</strong> sa povećanim rizikom.';
+    els.rizikPoAktuInfo.classList.add('rizik-po-aktu-ne');
+  }
 
   if (z.rizik_override === true) {
     els.rizikOverrideSelect.value = 'da';
@@ -753,7 +759,11 @@ function prikaziRizikStatus(z) {
   }
   els.rizikNapomenaInput.value = z.rizik_napomena || '';
 
-  els.obrazac6Section.classList.toggle('hidden', !z.povecan_rizik);
+  // Obrazac 6 (evidencija o obučenosti za BZR i LZO) se generiše za SVE zaposlene,
+  // ne samo za one sa povećanim rizikom -- "Uput za periodični lekarski pregled" i dalje
+  // ostaje vezan samo za zaposlene sa povećanim rizikom (njima se periodični lekarski
+  // pregled i radi).
+  els.obrazac6Section.classList.remove('hidden');
   els.obrazac6GenError.classList.add('hidden');
   els.uputLekarskiSection.classList.toggle('hidden', !z.povecan_rizik);
   els.uputGenError.classList.add('hidden');
@@ -2125,7 +2135,7 @@ async function loadKatalog() {
   const { data, error } = await supabaseClient
     .schema('bzr')
     .from('radna_mesta_rizik')
-    .select('sifra_radnog_mesta, naziv, periodicitet_meseci, opis_posla, opasnosti, sifra_opasnosti, mere, lzo_lista, posebni_zdravstveni_uslovi, aktivan')
+    .select('sifra_radnog_mesta, naziv, povecan_rizik_po_aktu, periodicitet_meseci, opis_posla, opasnosti, sifra_opasnosti, mere, lzo_lista, posebni_zdravstveni_uslovi, aktivan')
     .order('sifra_radnog_mesta', { ascending: true });
 
   if (error) {
@@ -2151,6 +2161,7 @@ function renderKatalogTable() {
     tr.innerHTML = `
       <td>${escapeHtml(r.sifra_radnog_mesta)}</td>
       <td>${escapeHtml(r.naziv || '')}</td>
+      <td>${r.povecan_rizik_po_aktu ? '<span class="badge badge-risk">da</span>' : 'ne'}</td>
       <td><span class="rizik-dot rizik-dot-${boja}"></span>${popunjeno}/${ukupno}</td>
       <td>${r.aktivan ? 'da' : 'ne'}</td>
     `;
@@ -2164,6 +2175,7 @@ function praznaKatalogForma() {
   els.katalogSifraInput.value = '';
   els.katalogSifraInput.disabled = false;
   els.katalogNazivInput.value = '';
+  els.katalogPovecanRizikInput.checked = false;
   els.katalogPeriodicitetInput.value = '';
   els.katalogOpisInput.value = '';
   els.katalogOpasnostiInput.value = '';
@@ -2193,6 +2205,7 @@ function otvoriKatalogForma(sifra) {
   els.katalogSifraInput.value = r.sifra_radnog_mesta || '';
   els.katalogSifraInput.disabled = true; // šifra je ključ -- ne menja se posle unosa
   els.katalogNazivInput.value = r.naziv || '';
+  els.katalogPovecanRizikInput.checked = !!r.povecan_rizik_po_aktu;
   els.katalogPeriodicitetInput.value = r.periodicitet_meseci != null ? r.periodicitet_meseci : '';
   els.katalogOpisInput.value = r.opis_posla || '';
   els.katalogOpasnostiInput.value = r.opasnosti || '';
@@ -2232,6 +2245,7 @@ els.katalogForm.addEventListener('submit', async (e) => {
 
   const payload = {
     naziv,
+    povecan_rizik_po_aktu: els.katalogPovecanRizikInput.checked,
     periodicitet_meseci: els.katalogPeriodicitetInput.value ? parseInt(els.katalogPeriodicitetInput.value, 10) : null,
     opis_posla: els.katalogOpisInput.value.trim() || null,
     opasnosti: els.katalogOpasnostiInput.value.trim() || null,
