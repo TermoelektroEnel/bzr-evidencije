@@ -247,6 +247,19 @@ function latinicaUCirilicu(text) {
   return rez.replace(/[A-Za-zĐđŽžĆćČčŠš]/g, (ch) => (mapa[ch] !== undefined ? mapa[ch] : ch));
 }
 
+// Neka radna mesta imaju oblik "Srpski naziv/ English translation" (npr. "Rukovodilac
+// projekta/ Project manager", "Inž.plan.i analize izvrš./Planning off."). latinicaUCirilicu
+// bi transliterisala i taj engleski deo, a on treba da ostane na latinici. Transliterujemo
+// samo deo pre prve kose crte; sve od kose crte nadalje (uključujući nju samu) ostaje
+// nepromenjeno.
+function radnoMestoLatinicaUCirilicu(radnoMesto) {
+  if (!radnoMesto) return radnoMesto;
+  const tekst = String(radnoMesto);
+  const idx = tekst.indexOf('/');
+  if (idx === -1) return latinicaUCirilicu(tekst);
+  return latinicaUCirilicu(tekst.slice(0, idx)) + tekst.slice(idx);
+}
+
 function formatDatumSrpski(d) {
   const dd = String(d.getDate()).padStart(2, '0');
   const mm = String(d.getMonth() + 1).padStart(2, '0');
@@ -863,9 +876,12 @@ els.obrazac6GenerisiBtn.addEventListener('click', async () => {
     // Šablon Obrasca 6 je ceo na ćirilici — sav tekst koji ubacujemo (iz baze, kataloga
     // radnih mesta i forme, gde se sve čuva na latinici) transliterujemo pre umetanja,
     // da fajl ne bi ispao mešovit. Datumi (danas) su brojevi, ne treba ih transliterovati.
+    // radno_mesto ide kroz radnoMestoLatinicaUCirilicu jer neka radna mesta imaju oblik
+    // "Srpski naziv/ English translation" -- engleski deo iza kose crte treba da ostane
+    // na latinici.
     doc.render({
       ime_prezime: latinicaUCirilicu(trenutniZaposleni.prezime_ime || ''),
-      radno_mesto: latinicaUCirilicu(trenutniZaposleni.radno_mesto || ''),
+      radno_mesto: radnoMestoLatinicaUCirilicu(trenutniZaposleni.radno_mesto || ''),
       opis_posla: latinicaUCirilicu(rmRow.opis_posla || ''),
       razlog_obuke: latinicaUCirilicu(razlogObuke),
       datum_obuke_teor: danas,
