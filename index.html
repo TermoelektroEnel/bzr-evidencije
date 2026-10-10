@@ -40,84 +40,60 @@
 
     <!-- LISTA ZAPOSLENIH -->
     <section id="zaposleni-view" class="panel hidden">
+      <!-- KADROVSKA (v_radnici_kadrovska iz projekta prisustvo-karnet-razvoj) -->
       <div class="panel-header-row">
-        <h2>Zaposleni</h2>
+        <h2>Kadrovska evidencija</h2>
         <div>
-          <button type="button" class="secondary" id="kadrovska-uvoz-btn">Uvoz JMBG / datuma rođenja / imena oca</button>
-          <button type="button" class="secondary" id="obrazac1-btn">Generiši Obrazac 1 (.docx)</button>
+          <button type="button" class="secondary" id="kadrovska-obrazac1-btn">Generiši Obrazac 1 (.docx)</button>
         </div>
       </div>
 
-      <div id="kadrovska-uvoz-panel" class="hidden" style="margin-bottom: 18px; border: 1px solid var(--border); border-radius: var(--radius); padding: 14px;">
-        <h3 style="margin-top:0;">Uvoz iz kadrovske (Clipper)</h3>
-        <p class="info-msg">Čita SAMO matični broj, JMBG, datum rođenja i ime oca iz kadrovskih DBF fajlova — ništa drugo (ni adresu, ni broj lične karte, ni tekući račun, ni pol). Radi direktno u browseru (Chrome ili Edge) — fajlovi ne idu nigde osim ovde, dok sam ne potvrdiš upis. Izaberi nadređeni folder u kome se nalaze podfolderi DBF, PPN_dbf i PPP_dbf.</p>
-        <button type="button" class="secondary" id="kadrovska-izaberi-folder-btn">Izaberi folder sa kadrovskom...</button>
-        <div class="error-msg hidden" id="kadrovska-uvoz-error"></div>
-        <div id="kadrovska-uvoz-pregled" class="hidden">
-          <p class="info-msg" id="kadrovska-uvoz-info"></p>
-          <table id="kadrovska-uvoz-table">
-            <thead>
-              <tr>
-                <th><input type="checkbox" id="kadrovska-uvoz-sve" checked /></th>
-                <th>Mat. br.</th>
-                <th>Ime i prezime (iz BZR evidencije)</th>
-                <th>JMBG</th>
-                <th>Datum rođenja</th>
-                <th>Ime oca</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody id="kadrovska-uvoz-tbody"></tbody>
-          </table>
-          <button type="button" class="primary" id="kadrovska-uvoz-upisi-btn">Upiši izabrano u BZR</button>
-          <button type="button" class="secondary" id="kadrovska-uvoz-otkazi-btn">Zatvori</button>
-        </div>
+      <div style="overflow-x: auto;">
+        <table id="kadrovska-table">
+          <thead>
+            <tr>
+              <th>Mat. br.</th>
+              <th>Ime i prezime</th>
+              <th>Radno mesto</th>
+              <th>Radna jedinica</th>
+              <th>Rizik</th>
+              <th>Semafor</th>
+              <th>Status</th>
+            </tr>
+            <tr class="filter-row">
+              <th><input type="text" id="kadrovska-filter-matbr" placeholder="filter..." /></th>
+              <th><input type="text" id="kadrovska-filter-ime" placeholder="filter..." /></th>
+              <th><input type="text" id="kadrovska-filter-radno-mesto" placeholder="filter..." /></th>
+              <th><input type="text" id="kadrovska-filter-radna-jedinica" placeholder="filter..." /></th>
+              <th>
+                <select id="kadrovska-filter-rizik">
+                  <option value="">svi</option>
+                  <option value="da">povećan rizik</option>
+                  <option value="ne">nije povećan rizik</option>
+                </select>
+              </th>
+              <th>
+                <select id="kadrovska-filter-semafor">
+                  <option value="">svi</option>
+                  <option value="red">crveni (isteklo / nema pregled)</option>
+                  <option value="orange">narandžasti (ističe uskoro)</option>
+                  <option value="green">zeleni (važi)</option>
+                  <option value="none">bez semafora (nije povećan rizik)</option>
+                </select>
+              </th>
+              <th>
+                <select id="kadrovska-filter-status">
+                  <option value="">svi</option>
+                  <option value="aktivan">aktivan</option>
+                  <option value="neaktivan">neaktivan</option>
+                </select>
+              </th>
+            </tr>
+          </thead>
+          <tbody id="kadrovska-tbody"></tbody>
+        </table>
       </div>
-
-      <table id="zaposleni-table">
-        <thead>
-          <tr>
-            <th>Mat. br.</th>
-            <th>Ime i prezime</th>
-            <th>Radno mesto</th>
-            <th>Radna jedinica</th>
-            <th>Rizik</th>
-            <th>Semafor</th>
-            <th>Status</th>
-          </tr>
-          <tr class="filter-row">
-            <th><input type="text" id="filter-matbr" placeholder="filter..." /></th>
-            <th><input type="text" id="filter-ime" placeholder="filter..." /></th>
-            <th><input type="text" id="filter-radno-mesto" placeholder="filter..." /></th>
-            <th><input type="text" id="filter-radna-jedinica" placeholder="filter..." /></th>
-            <th>
-              <select id="filter-rizik">
-                <option value="">svi</option>
-                <option value="da">povećan rizik</option>
-                <option value="ne">nije povećan rizik</option>
-              </select>
-            </th>
-            <th>
-              <select id="filter-semafor">
-                <option value="">svi</option>
-                <option value="red">crveni (isteklo / nema pregled)</option>
-                <option value="orange">narandžasti (ističe uskoro)</option>
-                <option value="green">zeleni (važi)</option>
-                <option value="none">bez semafora (nije povećan rizik)</option>
-              </select>
-            </th>
-            <th>
-              <select id="filter-status">
-                <option value="">svi</option>
-                <option value="aktivan">aktivan</option>
-                <option value="neaktivan">neaktivan</option>
-              </select>
-            </th>
-          </tr>
-        </thead>
-        <tbody id="zaposleni-tbody"></tbody>
-      </table>
-      <p class="info-msg" id="zaposleni-info"></p>
+      <p class="info-msg" id="kadrovska-info"></p>
     </section>
 
     <!-- DETALJI ZAPOSLENOG -->
@@ -151,7 +127,7 @@
 
       <div id="uput-lekarski-section" class="hidden">
         <h3>Uput za periodični lekarski pregled</h3>
-        <p class="info-msg">Ovi lični podaci se ne čuvaju u bazi zaposlenih — unesi ih ovde jednom po zaposlenom, aplikacija ih pamti i sama predlaže sledeći put.</p>
+        <p class="info-msg">JMBG, datum rođenja i ime oca (za predlog imena) se automatski popunjavaju iz kadrovske evidencije. Mesto rođenja i zanimanje ne postoje u kadrovskoj — unesi ih ovde jednom po zaposlenom, aplikacija ih pamti i sama predlaže sledeći put.</p>
         <label for="uput-ime-ocevo-prezime-input">Ime, očevo ime i prezime</label>
         <input type="text" id="uput-ime-ocevo-prezime-input" placeholder="npr. Petar Nikolin Petrović" />
 
@@ -524,7 +500,6 @@
 </main>
 
 <script src="config.js"></script>
-<script src="kadrovska-uvoz.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
