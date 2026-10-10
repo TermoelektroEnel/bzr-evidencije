@@ -448,6 +448,7 @@ async function checkSession() {
   if (session) {
     showPortal();
     loadZaposleni();
+    loadKadrovska();
   } else {
     showLogin();
   }
@@ -463,11 +464,16 @@ els.loginBtn.addEventListener('click', async () => {
     els.loginError.classList.remove('hidden');
     return;
   }
+  // Istim email/lozinkom se prijavljujemo i na projekat sa kadrovskom evidencijom.
+  // Ako tamo nalog ne postoji ili je lozinka drugačija, BZR radi normalno, a lista
+  // kadrovske samo prikaže poruku.
+  await kadrovskaClient.auth.signInWithPassword({ email, password });
   checkSession();
 });
 
 els.logoutBtn.addEventListener('click', async () => {
   await supabaseClient.auth.signOut();
+  await kadrovskaClient.auth.signOut();
   checkSession();
 });
 
@@ -568,6 +574,160 @@ function applyFilters() {
   el.addEventListener('change', applyFilters);
 });
 
+// ---------- KADROVSKA (v_radnici_kadrovska, drugi Supabase projekat) ----------
+
+let kadrovskaCache = [];
+// mat_br -> red iz bzr.v_rizik_status (Rizik i Semafor se računaju u bazi, ne ovde)
+let rizikPoMatBr = new Map();
+const kadrovskaEls = {
+  tbody: document.getElementById('kadrovska-tbody'),
+  info: document.getElementById('kadrovska-info'),
+  obrazac1Btn: document.getElementById('kadrovska-obrazac1-btn'),
+  filterMatbr: document.getElementById('kadrovska-filter-matbr'),
+  filterIme: document.getElementById('kadrovska-filter-ime'),
+  filterRadnoMesto: document.getElementById('kadrovska-filter-radno-mesto'),
+  filterRadnaJedinica: document.getElementById('kadrovska-filter-radna-jedinica'),
+  filterRizik: document.getElementById('kadrovska-filter-rizik'),
+  filterSemafor: document.getElementById('kadrovska-filter-semafor'),
+  filterStatus: document.getElementById('kadrovska-filter-status'),
+};
+
+async function loadKadrovska() {
+  kadrovskaEls.info.textContent = 'Učitavanje...';
+  kadrovskaEls.tbody.innerHTML = '';
+
+  const { data: { session } } = await kadrovskaClient.auth.getSession();
+  if (!session) {
+    kadrovskaEls.info.textContent =
+      'Niste prijavljeni na kadrovsku evidenciju — nalog sa istim email-om i lozinkom ne postoji u projektu prisustvo-karnet-razvoj. Odjavite se i prijavite ponovo nakon što se nalog napravi.';
+    return;
+  }
+
+  const [kadrovska, rizik] = await Promise.all([
+    kadrovskaClient
+      .schema('evidencija')
+      .from('v_radnici_kadrovska')
+      .select('mat_br, prezime_ime, radno_mesto, radna_jedinica, aktivan, ime_oca')
+      .order('prezime_ime', { ascending: true }),
+    supabaseClient
+      .schema('bzr')
+      .from('v_rizik_status')
+      .select('mat_br, sifra_radnog_mesta, povecan_rizik, povecan_rizik_po_aktu, rizik_rucno, rizik_napomena, semafor, semafor_opis'),
+  ]);
+
+  if (kadrovska.error) {
+    kadrovskaEls.info.textContent = 'Greška pri učitavanju kadrovske: ' + kadrovska.error.message;
+    return;
+  }
+  if (rizik.error) {
+    kadrovskaEls.info.textContent = 'Greška pri učitavanju rizika: ' + rizik.error.message;
+    return;
+  }
+
+  rizikPoMatBr = new Map((rizik.data || []).map((r) => [r.mat_br, r]));
+  kadrovskaCache = kadrovska.data || [];
+  if (kadrovskaCache.length === 0) {
+    kadrovskaEls.info.textContent =
+      'Kadrovska evidencija je prazna za ovaj nalog (vidljiva je samo korisnicima sa ulogom administrator ili obracun).';
+    return;
+  }
+
+  applyKadrovskaFilter();
+}
+
+function applyKadrovskaFilter() {
+  // Isti filteri kao u tabeli Zaposleni (applyFilters)
+  const matbr = kadrovskaEls.filterMatbr.value.trim().toLowerCase();
+  const ime = kadrovskaEls.filterIme.value.trim().toLowerCase();
+  const radnoMesto = kadrovskaEls.filterRadnoMesto.value.trim().toLowerCase();
+  const radnaJedinica = kadrovskaEls.filterRadnaJedinica.value.trim().toLowerCase();
+  const rizik = kadrovskaEls.filterRizik.value; // '', 'da', 'ne'
+  const semafor = kadrovskaEls.filterSemafor.value; // '', 'red', 'orange', 'green', 'none'
+  const status = kadrovskaEls.filterStatus.value; // '', 'aktivan', 'neaktivan'
+
+  const list = kadrovskaCache.filter((r) => {
+    const rz = rizikPoMatBr.get(r.mat_br);
+    const povecan = !!(rz && rz.povecan_rizik);
+    if (matbr && !(r.mat_br || '').toLowerCase().includes(matbr)) return false;
+    if (ime && !(r.prezime_ime || '').toLowerCase().includes(ime)) return false;
+    if (radnoMesto && !(r.radno_mesto || '').toLowerCase().includes(radnoMesto)) return false;
+    if (radnaJedinica && !(r.radna_jedinica || '').toLowerCase().includes(radnaJedinica)) return false;
+    if (rizik === 'da' && !povecan) return false;
+    if (rizik === 'ne' && povecan) return false;
+    if (semafor && ((rz && rz.semafor) || 'none') !== semafor) return false;
+    if (status === 'aktivan' && !r.aktivan) return false;
+    if (status === 'neaktivan' && r.aktivan) return false;
+    return true;
+  });
+
+  kadrovskaEls.info.textContent = `Prikazano: ${list.length} od ${kadrovskaCache.length}`;
+  kadrovskaEls.tbody.innerHTML = list
+    .map((r) => {
+      // Isti prikaz kao u tabeli Zaposleni, ali boja i tekst semafora dolaze gotovi iz bzr.v_rizik_status
+      const rz = rizikPoMatBr.get(r.mat_br);
+      const dotHtml = rz && rz.semafor
+        ? `<span class="rizik-dot rizik-dot-${rz.semafor}" title="${escapeAttr(rz.semafor_opis)}"></span>`
+        : '';
+      const rizikCell = !rz
+        ? '<span class="info-msg">nema u BZR</span>'
+        : `${rz.povecan_rizik ? '<span class="badge badge-risk">povećan rizik</span>' : ''}${rz.rizik_rucno ? ` <span class="badge" title="${escapeAttr(rz.rizik_napomena || 'Ručno promenjen status')}">ručno</span>` : ''}`;
+      const semaforCell = rz && rz.semafor
+        ? `${dotHtml}${escapeHtml(rz.semafor_opis)}`
+        : '<span class="info-msg">—</span>';
+      return `
+      <tr class="row-clickable" data-mat-br="${escapeAttr(r.mat_br)}">
+        <td>${escapeHtml(r.mat_br)}</td>
+        <td>${dotHtml}${escapeHtml(r.prezime_ime)}</td>
+        <td>${escapeHtml(r.radno_mesto)}</td>
+        <td>${escapeHtml(r.radna_jedinica)}</td>
+        <td>${rizikCell}</td>
+        <td>${semaforCell}</td>
+        <td><span class="badge">${r.aktivan ? 'aktivan' : 'neaktivan'}</span></td>
+      </tr>`;
+    })
+    .join('');
+}
+
+[kadrovskaEls.filterMatbr, kadrovskaEls.filterIme, kadrovskaEls.filterRadnoMesto, kadrovskaEls.filterRadnaJedinica].forEach((el) => {
+  el.addEventListener('input', applyKadrovskaFilter);
+});
+[kadrovskaEls.filterRizik, kadrovskaEls.filterSemafor, kadrovskaEls.filterStatus].forEach((el) => {
+  el.addEventListener('change', applyKadrovskaFilter);
+});
+
+// Isti Obrazac 1 kao u Zaposleni, ali spisak ljudi (ime, radno mesto, šifra) dolazi iz
+// kadrovske, a povećan rizik iz bzr.v_rizik_status
+kadrovskaEls.obrazac1Btn.addEventListener('click', () => {
+  const lista = kadrovskaCache.map((k) => kadrovskaUZaposlenog(k.mat_br));
+  generisiObrazac1(lista, kadrovskaEls.obrazac1Btn);
+});
+
+kadrovskaEls.tbody.addEventListener('click', (e) => {
+  const tr = e.target.closest('tr[data-mat-br]');
+  if (tr) openKadrovskaDetail(tr.dataset.matBr);
+});
+
+// Red iz kadrovske + red iz bzr.v_rizik_status, u istom obliku kao red iz
+// v_zaposleni_status_rizika, da bi panel "Detalji zaposlenog" radio isto za obe liste.
+function kadrovskaUZaposlenog(matBr) {
+  const r = kadrovskaCache.find((k) => k.mat_br === matBr);
+  if (!r) return null;
+  const rz = rizikPoMatBr.get(matBr) || {};
+  return {
+    mat_br: r.mat_br,
+    prezime_ime: r.prezime_ime,
+    radno_mesto: r.radno_mesto,
+    radna_jedinica: r.radna_jedinica,
+    aktivan: r.aktivan,
+    sifra_radnog_mesta: rz.sifra_radnog_mesta || null,
+    povecan_rizik: !!rz.povecan_rizik,
+    povecan_rizik_po_aktu: !!rz.povecan_rizik_po_aktu,
+    // Ručni izuzetak uvek ima prednost, pa je njegova vrednost upravo povecan_rizik
+    rizik_override: rz.rizik_rucno ? !!rz.povecan_rizik : null,
+    rizik_napomena: rz.rizik_napomena || null,
+  };
+}
+
 els.backToList.addEventListener('click', () => {
   showView(els.zaposleniView);
 });
@@ -577,16 +737,18 @@ els.backToList.addEventListener('click', () => {
 // zaposlenom sa povećanim rizikom, sa istorijom lekarskih pregleda (prethodni + do 4
 // najnovija periodična/vanredna pregleda).
 
-async function generisiObrazac1() {
-  const rizicni = zaposleniCache.filter((z) => z.povecan_rizik);
+// lista: redovi sa mat_br, prezime_ime, radno_mesto, sifra_radnog_mesta, povecan_rizik
+// (zaposleniCache, ili kadrovska preko kadrovskaUZaposlenog); btn: dugme koje je pokrenulo
+async function generisiObrazac1(lista, btn) {
+  const rizicni = lista.filter((z) => z.povecan_rizik);
   if (rizicni.length === 0) {
     alert('Nema zaposlenih sa povećanim rizikom za Obrazac 1.');
     return;
   }
 
-  els.obrazac1Btn.disabled = true;
-  const originalLabel = els.obrazac1Btn.textContent;
-  els.obrazac1Btn.textContent = 'Pripremam...';
+  btn.disabled = true;
+  const originalLabel = btn.textContent;
+  btn.textContent = 'Pripremam...';
 
   try {
     const matBrovi = rizicni.map((z) => z.mat_br);
@@ -665,17 +827,36 @@ async function generisiObrazac1() {
   } catch (err) {
     alert('Greška pri generisanju Obrasca 1: ' + (err.message || err));
   } finally {
-    els.obrazac1Btn.disabled = false;
-    els.obrazac1Btn.textContent = originalLabel;
+    btn.disabled = false;
+    btn.textContent = originalLabel;
   }
 }
 
-els.obrazac1Btn.addEventListener('click', generisiObrazac1);
+els.obrazac1Btn.addEventListener('click', () => generisiObrazac1(zaposleniCache, els.obrazac1Btn));
 
 // ---------- DETALJI + LEKARSKI PREGLEDI ----------
 
+// Iz koje liste je otvoren panel: 'zaposleni' ili 'kadrovska'
+let detaljIzvor = 'zaposleni';
+
+function nadjiZaposlenog(matBr) {
+  return detaljIzvor === 'kadrovska'
+    ? kadrovskaUZaposlenog(matBr)
+    : zaposleniCache.find((z) => z.mat_br === matBr);
+}
+
 async function openDetail(matBr) {
-  trenutniZaposleni = zaposleniCache.find((z) => z.mat_br === matBr);
+  detaljIzvor = 'zaposleni';
+  await prikaziDetalj(matBr);
+}
+
+async function openKadrovskaDetail(matBr) {
+  detaljIzvor = 'kadrovska';
+  await prikaziDetalj(matBr);
+}
+
+async function prikaziDetalj(matBr) {
+  trenutniZaposleni = nadjiZaposlenog(matBr);
   if (!trenutniZaposleni) return;
 
   els.detailIme.textContent = trenutniZaposleni.prezime_ime;
@@ -816,8 +997,8 @@ els.rizikSaveBtn.addEventListener('click', async () => {
   }
 
   els.rizikSavedMsg.classList.remove('hidden');
-  await loadZaposleni();
-  trenutniZaposleni = zaposleniCache.find((z) => z.mat_br === matBr);
+  await Promise.all([loadZaposleni(), loadKadrovska()]);
+  trenutniZaposleni = nadjiZaposlenog(matBr);
   if (trenutniZaposleni) {
     els.detailIme.textContent = trenutniZaposleni.prezime_ime;
     const rizikBadge = trenutniZaposleni.povecan_rizik
@@ -1348,7 +1529,7 @@ els.noviPregledForm.addEventListener('submit', async (e) => {
 
     // Novi pregled može da promeni status rizika (npr. datum isteka) — osveži listu
     // i vrati se na nju, umesto da ostaneš na detaljima zaposlenog.
-    await loadZaposleni();
+    await Promise.all([loadZaposleni(), loadKadrovska()]);
     showView(els.zaposleniView);
   } catch (err) {
     // Ako je fajl otpremljen ali upis reda nije uspeo, ukloni ga da ne ostane siroče na Storage-u.

@@ -118,6 +118,60 @@
         <tbody id="zaposleni-tbody"></tbody>
       </table>
       <p class="info-msg" id="zaposleni-info"></p>
+
+      <!-- KADROVSKA (v_radnici_kadrovska iz projekta prisustvo-karnet-razvoj) -->
+      <div class="panel-header-row" style="margin-top: 32px;">
+        <h2>Kadrovska evidencija</h2>
+        <div>
+          <button type="button" class="secondary" id="kadrovska-obrazac1-btn">Generiši Obrazac 1 (.docx)</button>
+        </div>
+      </div>
+      <div style="overflow-x: auto;">
+        <table id="kadrovska-table">
+          <thead>
+            <tr>
+              <th>Mat. br.</th>
+              <th>Ime i prezime</th>
+              <th>Radno mesto</th>
+              <th>Radna jedinica</th>
+              <th>Rizik</th>
+              <th>Semafor</th>
+              <th>Status</th>
+            </tr>
+            <tr class="filter-row">
+              <th><input type="text" id="kadrovska-filter-matbr" placeholder="filter..." /></th>
+              <th><input type="text" id="kadrovska-filter-ime" placeholder="filter..." /></th>
+              <th><input type="text" id="kadrovska-filter-radno-mesto" placeholder="filter..." /></th>
+              <th><input type="text" id="kadrovska-filter-radna-jedinica" placeholder="filter..." /></th>
+              <th>
+                <select id="kadrovska-filter-rizik">
+                  <option value="">svi</option>
+                  <option value="da">povećan rizik</option>
+                  <option value="ne">nije povećan rizik</option>
+                </select>
+              </th>
+              <th>
+                <select id="kadrovska-filter-semafor">
+                  <option value="">svi</option>
+                  <option value="red">crveni (isteklo / nema pregled)</option>
+                  <option value="orange">narandžasti (ističe uskoro)</option>
+                  <option value="green">zeleni (važi)</option>
+                  <option value="none">bez semafora (nije povećan rizik)</option>
+                </select>
+              </th>
+              <th>
+                <select id="kadrovska-filter-status">
+                  <option value="">svi</option>
+                  <option value="aktivan">aktivan</option>
+                  <option value="neaktivan">neaktivan</option>
+                </select>
+              </th>
+            </tr>
+          </thead>
+          <tbody id="kadrovska-tbody"></tbody>
+        </table>
+      </div>
+      <p class="info-msg" id="kadrovska-info"></p>
     </section>
 
     <!-- DETALJI ZAPOSLENOG -->
