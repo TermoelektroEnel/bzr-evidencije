@@ -45,15 +45,16 @@ const els = {
   pregrediList: document.getElementById('pregledi-list'),
   noviPregledForm: document.getElementById('novi-pregled-form'),
   pregledError: document.getElementById('pregled-error'),
-  folderObrazac6: document.getElementById('folder-obrazac6'),
   izvestajBrowseBtn: document.getElementById('izvestaj-browse-btn'),
   izvestajFile: document.getElementById('izvestaj-file'),
   izvestajFilename: document.getElementById('izvestaj-filename'),
   obrazac6BrowseBtn: document.getElementById('obrazac6-browse-btn'),
   obrazac6File: document.getElementById('obrazac6-file'),
   obrazac6Filename: document.getElementById('obrazac6-filename'),
-  obrazac6TestLink: document.getElementById('obrazac6-test-link'),
-  obrazac6CopyBtn: document.getElementById('obrazac6-copy-btn'),
+  obrazac6DatumInput: document.getElementById('obrazac6-datum-input'),
+  obrazac6UploadForm: document.getElementById('obrazac6-upload-form'),
+  obrazac6UploadError: document.getElementById('obrazac6-upload-error'),
+  obrasci6List: document.getElementById('obrasci6-list'),
   rizikPoAktuInfo: document.getElementById('rizik-po-aktu-info'),
   rizikOverrideSelect: document.getElementById('rizik-override-select'),
   rizikNapomenaInput: document.getElementById('rizik-napomena-input'),
@@ -143,7 +144,7 @@ const els = {
 };
 
 let trenutniIzvestajFile = null; // File objekat iz <input type="file">, otprema se na Supabase tek pri submit-u forme
-let trenutniObrazac6Url = null;
+let trenutniObrazac6File = null; // isto kao izveštaj — otprema se na Supabase tek pri submit-u forme
 
 // Naziv Supabase Storage bucket-a za izveštaje o lekarskim pregledima.
 // Bucket se pravi ručno u Supabase dashboardu (Storage → New bucket), mora biti privatan
@@ -153,26 +154,16 @@ const IZVESTAJ_BUCKET = 'lekarski-izvestaji';
 // Koliko dugo signed URL za pregled/preuzimanje izveštaja važi (u sekundama)
 const IZVESTAJ_SIGNED_URL_TTL = 300; // 5 minuta
 
+// Obrazac br. 6 (evidencija o obuci) — vezan za zaposlenog, ne za lekarski pregled.
+// Privatan bucket + tabela bzr.obrazac6_dokumenti, vidi obrazac6_storage_migracija.sql
+const OBRAZAC6_BUCKET = 'obuka-obrazac6';
+
 // Isti princip za stručne nalaze opreme (Storage bucket "oprema-strucni-nalazi")
 const OPREMA_NALAZ_BUCKET = 'oprema-strucni-nalazi';
 const OPREMA_NALAZ_SIGNED_URL_TTL = 300; // 5 minuta
 let trenutniOpremaNalazFile = null; // File objekat iz <input type="file">, otprema se tek pri submit-u forme
 
-// ---------- LOKALNI FAJLOVI (obrazac 6) ----------
-
-// Windows "Kopiraj kao putanju" (Shift+desni klik) automatski dodaje navodnike
-// oko putanje — ako se to nalepi u polje foldera, sve se pokvari. Uklanjamo ih.
-function sanitizeFolderPath(raw) {
-  return (raw || '').trim().replace(/^["']+|["']+$/g, '').trim();
-}
-
-function buildFileUrl(folder, filename) {
-  if (!folder || !filename) return '';
-  let f = sanitizeFolderPath(folder).replace(/\\/g, '/').replace(/\/+$/, '');
-  if (/^file:\/\//i.test(f)) return f + '/' + filename;
-  if (f.startsWith('//')) return 'file:' + f + '/' + filename; // UNC putanja
-  return 'file:///' + f + '/' + filename;
-}
+// ---------- STARI LOKALNI FAJLOVI (file:// linkovi u starim redovima) ----------
 
 // Vraća file:// URI nazad u putanju kakvu Windows Explorer razume (sa \ i bez file:///)
 // Ako putanja sadrži razmak, uokviri je navodnicima — tako se sigurno lepi i u
@@ -279,44 +270,6 @@ async function copyPathToClipboard(path, btn) {
   setTimeout(() => { btn.textContent = original; }, 1500);
 }
 
-function setupFilePicker({ folderInput, storageKey, browseBtn, fileInput, filenameSpan, testLink, copyBtn, getUrl, setUrl }) {
-  const saved = localStorage.getItem(storageKey);
-  if (saved) folderInput.value = saved;
-
-  folderInput.addEventListener('input', () => {
-    localStorage.setItem(storageKey, sanitizeFolderPath(folderInput.value));
-  });
-
-  // Ako je korisnik nalepio putanju kopiranu preko "Kopiraj kao putanju" (sa navodnicima),
-  // očisti ih čim napusti polje da se odmah vidi ispravljena vrednost.
-  folderInput.addEventListener('blur', () => {
-    const clean = sanitizeFolderPath(folderInput.value);
-    if (clean !== folderInput.value) {
-      folderInput.value = clean;
-      localStorage.setItem(storageKey, clean);
-    }
-  });
-
-  browseBtn.addEventListener('click', () => fileInput.click());
-
-  fileInput.addEventListener('change', () => {
-    const file = fileInput.files[0];
-    if (!file) return;
-    const url = buildFileUrl(folderInput.value, file.name);
-    setUrl(url);
-    filenameSpan.textContent = file.name;
-    if (url) {
-      testLink.href = url;
-      testLink.classList.remove('hidden');
-      copyBtn.classList.remove('hidden');
-    }
-  });
-
-  copyBtn.addEventListener('click', () => {
-    copyPathToClipboard(fileUrlToWindowsPath(getUrl()), copyBtn);
-  });
-}
-
 // Izveštaj o lekarskom pregledu: fajl se samo bira ovde, stvarno otpremanje na
 // Supabase Storage se dešava tek pri submit-u forme (vidi els.noviPregledForm handler).
 els.izvestajBrowseBtn.addEventListener('click', () => els.izvestajFile.click());
@@ -337,26 +290,25 @@ els.opremaPregledFile.addEventListener('change', () => {
   els.opremaPregledFilename.textContent = file ? file.name : 'Nije izabran fajl';
 });
 
-setupFilePicker({
-  folderInput: els.folderObrazac6,
-  storageKey: 'bzr_folder_obrazac6',
-  browseBtn: els.obrazac6BrowseBtn,
-  fileInput: els.obrazac6File,
-  filenameSpan: els.obrazac6Filename,
-  testLink: els.obrazac6TestLink,
-  copyBtn: els.obrazac6CopyBtn,
-  getUrl: () => trenutniObrazac6Url,
-  setUrl: (url) => { trenutniObrazac6Url = url; },
+// Obrazac br. 6: fajl se bira ovde, otprema se tek pri submit-u forme za Obrazac 6
+// (vidi els.obrazac6UploadForm handler) — nezavisno od lekarskih pregleda.
+els.obrazac6BrowseBtn.addEventListener('click', () => els.obrazac6File.click());
+
+els.obrazac6File.addEventListener('change', () => {
+  const file = els.obrazac6File.files[0];
+  trenutniObrazac6File = file || null;
+  els.obrazac6Filename.textContent = file ? file.name : 'Nije izabran fajl';
 });
 
 function resetFilePickers() {
   trenutniIzvestajFile = null;
-  trenutniObrazac6Url = null;
   els.izvestajFilename.textContent = 'Nije izabran fajl';
-  els.obrazac6Filename.textContent = 'Nije izabran fajl';
-  els.obrazac6CopyBtn.classList.add('hidden');
-  els.obrazac6TestLink.classList.add('hidden');
   els.izvestajFile.value = '';
+}
+
+function resetObrazac6Picker() {
+  trenutniObrazac6File = null;
+  els.obrazac6Filename.textContent = 'Nije izabran fajl';
   els.obrazac6File.value = '';
 }
 
@@ -481,6 +433,8 @@ async function loadZaposleni() {
 let kadrovskaCache = [];
 // mat_br -> red iz bzr.v_rizik_status (Rizik i Semafor se računaju u bazi, ne ovde)
 let rizikPoMatBr = new Map();
+// mat_br -> red iz bzr.v_obrazac6_status (Semafor za Obrazac 6, isto računat u bazi)
+let obrazac6PoMatBr = new Map();
 const kadrovskaEls = {
   tbody: document.getElementById('kadrovska-tbody'),
   info: document.getElementById('kadrovska-info'),
@@ -491,8 +445,18 @@ const kadrovskaEls = {
   filterRadnaJedinica: document.getElementById('kadrovska-filter-radna-jedinica'),
   filterRizik: document.getElementById('kadrovska-filter-rizik'),
   filterSemafor: document.getElementById('kadrovska-filter-semafor'),
+  filterObrazac6: document.getElementById('kadrovska-filter-obrazac6'),
   filterStatus: document.getElementById('kadrovska-filter-status'),
+  checkAll: document.getElementById('kadrovska-check-all'),
+  emailBtn: document.getElementById('kadrovska-email-btn'),
+  emailInfo: document.getElementById('kadrovska-email-info'),
 };
+
+// mat_br zaposlenih označenih čekboksom (za slanje emaila) — ostaju označeni i kad se
+// promeni filter, dok se ne odznače ručno
+const kadrovskaIzabrani = new Set();
+// mat_br zaposlenih koji su trenutno prikazani (posle filtera) — za "označi sve"
+let kadrovskaPrikazani = [];
 
 async function loadKadrovska() {
   kadrovskaEls.info.textContent = 'Učitavanje...';
@@ -505,7 +469,7 @@ async function loadKadrovska() {
     return;
   }
 
-  const [kadrovska, rizik] = await Promise.all([
+  const [kadrovska, rizik, obrazac6] = await Promise.all([
     kadrovskaClient
       .schema('evidencija')
       .from('v_radnici_kadrovska')
@@ -515,6 +479,10 @@ async function loadKadrovska() {
       .schema('bzr')
       .from('v_rizik_status')
       .select('mat_br, sifra_radnog_mesta, povecan_rizik, povecan_rizik_po_aktu, rizik_rucno, rizik_napomena, semafor, semafor_opis'),
+    supabaseClient
+      .schema('bzr')
+      .from('v_obrazac6_status')
+      .select('mat_br, semafor, semafor_opis'),
   ]);
 
   if (kadrovska.error) {
@@ -526,7 +494,13 @@ async function loadKadrovska() {
     return;
   }
 
+  if (obrazac6.error) {
+    kadrovskaEls.info.textContent = 'Greška pri učitavanju statusa Obrasca 6: ' + obrazac6.error.message;
+    return;
+  }
+
   rizikPoMatBr = new Map((rizik.data || []).map((r) => [r.mat_br, r]));
+  obrazac6PoMatBr = new Map((obrazac6.data || []).map((r) => [r.mat_br, r]));
   kadrovskaCache = kadrovska.data || [];
   if (kadrovskaCache.length === 0) {
     kadrovskaEls.info.textContent =
@@ -544,6 +518,7 @@ function applyKadrovskaFilter() {
   const radnaJedinica = kadrovskaEls.filterRadnaJedinica.value.trim().toLowerCase();
   const rizik = kadrovskaEls.filterRizik.value; // '', 'da', 'ne'
   const semafor = kadrovskaEls.filterSemafor.value; // '', 'red', 'orange', 'green', 'none'
+  const semaforObrazac6 = kadrovskaEls.filterObrazac6.value; // '', 'red', 'orange', 'green'
   const status = kadrovskaEls.filterStatus.value; // '', 'aktivan', 'neaktivan'
 
   const list = kadrovskaCache.filter((r) => {
@@ -556,11 +531,16 @@ function applyKadrovskaFilter() {
     if (rizik === 'da' && !povecan) return false;
     if (rizik === 'ne' && povecan) return false;
     if (semafor && ((rz && rz.semafor) || 'none') !== semafor) return false;
+    if (semaforObrazac6) {
+      const o6 = obrazac6PoMatBr.get(r.mat_br);
+      if (!o6 || o6.semafor !== semaforObrazac6) return false;
+    }
     if (status === 'aktivan' && !r.aktivan) return false;
     if (status === 'neaktivan' && r.aktivan) return false;
     return true;
   });
 
+  kadrovskaPrikazani = list.map((r) => r.mat_br);
   kadrovskaEls.info.textContent = `Prikazano: ${list.length} od ${kadrovskaCache.length}`;
   kadrovskaEls.tbody.innerHTML = list
     .map((r) => {
@@ -575,24 +555,31 @@ function applyKadrovskaFilter() {
       const semaforCell = rz && rz.semafor
         ? `${dotHtml}${escapeHtml(rz.semafor_opis)}`
         : '<span class="info-msg">—</span>';
+      const o6 = obrazac6PoMatBr.get(r.mat_br);
+      const obrazac6Cell = o6
+        ? `<span class="rizik-dot rizik-dot-${o6.semafor}" title="${escapeAttr(o6.semafor_opis)}"></span>${escapeHtml(o6.semafor_opis)}`
+        : '<span class="info-msg">nema u BZR</span>';
       return `
       <tr class="row-clickable" data-mat-br="${escapeAttr(r.mat_br)}">
+        <td class="col-check"><input type="checkbox" class="kadrovska-check" data-mat-br="${escapeAttr(r.mat_br)}"${kadrovskaIzabrani.has(r.mat_br) ? ' checked' : ''} /></td>
         <td>${escapeHtml(r.mat_br)}</td>
         <td>${dotHtml}${escapeHtml(r.prezime_ime)}</td>
         <td>${escapeHtml(r.radno_mesto)}</td>
         <td>${escapeHtml(r.radna_jedinica)}</td>
         <td>${rizikCell}</td>
         <td>${semaforCell}</td>
+        <td>${obrazac6Cell}</td>
         <td><span class="badge">${r.aktivan ? 'aktivan' : 'neaktivan'}</span></td>
       </tr>`;
     })
     .join('');
+  osveziKadrovskaIzbor();
 }
 
 [kadrovskaEls.filterMatbr, kadrovskaEls.filterIme, kadrovskaEls.filterRadnoMesto, kadrovskaEls.filterRadnaJedinica].forEach((el) => {
   el.addEventListener('input', applyKadrovskaFilter);
 });
-[kadrovskaEls.filterRizik, kadrovskaEls.filterSemafor, kadrovskaEls.filterStatus].forEach((el) => {
+[kadrovskaEls.filterRizik, kadrovskaEls.filterSemafor, kadrovskaEls.filterObrazac6, kadrovskaEls.filterStatus].forEach((el) => {
   el.addEventListener('change', applyKadrovskaFilter);
 });
 
@@ -604,8 +591,237 @@ kadrovskaEls.obrazac1Btn.addEventListener('click', () => {
 });
 
 kadrovskaEls.tbody.addEventListener('click', (e) => {
+  // Klik na čekboks (ili prostor oko njega) samo označava, ne otvara detalje
+  if (e.target.closest('td.col-check')) return;
   const tr = e.target.closest('tr[data-mat-br]');
   if (tr) openKadrovskaDetail(tr.dataset.matBr);
+});
+
+// ---------- SLANJE EMAILA (lekarski izveštaj + Obrazac 6 za označene zaposlene) ----------
+//
+// Web stranica ne može da otvori novi mail sa prilozima (mailto: ne podržava priloge).
+// Zato pravimo .eml nacrt poruke (sa zaglavljem X-Unsent: 1) sa ubačenim prilozima i
+// nudimo ga za preuzimanje: Outlook (Windows) ga otvara kao novu poruku spremnu za slanje,
+// a u Apple Mail-u se otvori kao primljena poruka, pa se šalje sa Poruka → Pošalji ponovo.
+
+function osveziKadrovskaIzbor() {
+  const n = kadrovskaIzabrani.size;
+  kadrovskaEls.emailBtn.textContent = `Pošalji email (${n})`;
+  kadrovskaEls.emailBtn.disabled = n === 0;
+  const oznaceniPrikazani = kadrovskaPrikazani.filter((m) => kadrovskaIzabrani.has(m)).length;
+  kadrovskaEls.checkAll.checked = kadrovskaPrikazani.length > 0 && oznaceniPrikazani === kadrovskaPrikazani.length;
+  kadrovskaEls.checkAll.indeterminate = oznaceniPrikazani > 0 && oznaceniPrikazani < kadrovskaPrikazani.length;
+}
+
+kadrovskaEls.tbody.addEventListener('change', (e) => {
+  const cb = e.target.closest('.kadrovska-check');
+  if (!cb) return;
+  if (cb.checked) kadrovskaIzabrani.add(cb.dataset.matBr);
+  else kadrovskaIzabrani.delete(cb.dataset.matBr);
+  osveziKadrovskaIzbor();
+});
+
+kadrovskaEls.checkAll.addEventListener('change', () => {
+  const oznaci = kadrovskaEls.checkAll.checked;
+  kadrovskaPrikazani.forEach((m) => {
+    if (oznaci) kadrovskaIzabrani.add(m);
+    else kadrovskaIzabrani.delete(m);
+  });
+  kadrovskaEls.tbody.querySelectorAll('.kadrovska-check').forEach((cb) => { cb.checked = oznaci; });
+  osveziKadrovskaIzbor();
+});
+
+// Nazivi priloga bez kvačica i specijalnih znakova — neki mail klijenti loše prikazuju
+// UTF-8 nazive fajlova u prilozima.
+function bezbedanNazivFajla(text) {
+  const mapa = { Đ: 'Dj', đ: 'dj', Ž: 'Z', ž: 'z', Ć: 'C', ć: 'c', Č: 'C', č: 'c', Š: 'S', š: 's' };
+  return String(text || '')
+    .replace(/[ĐđŽžĆćČčŠš]/g, (ch) => mapa[ch])
+    .replace(/[^A-Za-z0-9._-]+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_|_$/g, '');
+}
+
+function blobUBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(',')[1] || '');
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+  });
+}
+
+function utf8UBase64(text) {
+  const bytes = new TextEncoder().encode(text);
+  let bin = '';
+  bytes.forEach((b) => { bin += String.fromCharCode(b); });
+  return btoa(bin);
+}
+
+// MIME zahteva redove od najviše 76 znakova za base64 sadržaj
+function prelomiBase64(b64) {
+  return (b64.match(/.{1,76}/g) || []).join('\r\n');
+}
+
+function napraviEml({ subject, body, prilozi }) {
+  const granica = '----=_BZR_' + Date.now().toString(36) + Math.random().toString(36).slice(2);
+  const delovi = [
+    'X-Unsent: 1',
+    'To: ',
+    `Subject: =?UTF-8?B?${utf8UBase64(subject)}?=`,
+    'MIME-Version: 1.0',
+    `Content-Type: multipart/mixed; boundary="${granica}"`,
+    '',
+    `--${granica}`,
+    'Content-Type: text/plain; charset="UTF-8"',
+    'Content-Transfer-Encoding: base64',
+    '',
+    prelomiBase64(utf8UBase64(body.replace(/\r?\n/g, '\r\n'))),
+  ];
+  prilozi.forEach((p) => {
+    delovi.push(
+      `--${granica}`,
+      `Content-Type: ${p.contentType}; name="${p.naziv}"`,
+      'Content-Transfer-Encoding: base64',
+      `Content-Disposition: attachment; filename="${p.naziv}"`,
+      '',
+      prelomiBase64(p.base64),
+    );
+  });
+  delovi.push(`--${granica}--`, '');
+  return delovi.join('\r\n');
+}
+
+function contentTypeZaFajl(naziv, blob) {
+  if (blob && blob.type) return blob.type;
+  const ext = (naziv.split('.').pop() || '').toLowerCase();
+  if (ext === 'pdf') return 'application/pdf';
+  if (ext === 'docx') return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+  if (ext === 'doc') return 'application/msword';
+  return 'application/octet-stream';
+}
+
+kadrovskaEls.emailBtn.addEventListener('click', async () => {
+  const matBrovi = [...kadrovskaIzabrani];
+  if (matBrovi.length === 0) return;
+
+  const btn = kadrovskaEls.emailBtn;
+  const originalLabel = btn.textContent;
+  btn.disabled = true;
+  kadrovskaEls.emailInfo.classList.add('hidden');
+
+  try {
+    btn.textContent = 'Tražim dokumente...';
+    const [pregledi, obrasci] = await Promise.all([
+      supabaseClient
+        .schema('bzr')
+        .from('lekarski_pregledi')
+        .select('mat_br, datum_pregleda, vazi_do, izvestaj_storage_path')
+        .in('mat_br', matBrovi)
+        .not('izvestaj_storage_path', 'is', null)
+        .order('datum_pregleda', { ascending: false }),
+      supabaseClient
+        .schema('bzr')
+        .from('obrazac6_dokumenti')
+        .select('mat_br, datum_obuke, storage_path, naziv_fajla')
+        .in('mat_br', matBrovi)
+        .order('datum_obuke', { ascending: false })
+        .order('created_at', { ascending: false }),
+    ]);
+    if (pregledi.error) throw new Error('Greška pri čitanju lekarskih pregleda: ' + pregledi.error.message);
+    if (obrasci.error) throw new Error('Greška pri čitanju Obrazaca 6: ' + obrasci.error.message);
+
+    // Liste su sortirane od najnovijeg — prvi red po zaposlenom je poslednji
+    const poslednjiPregled = new Map();
+    (pregledi.data || []).forEach((p) => { if (!poslednjiPregled.has(p.mat_br)) poslednjiPregled.set(p.mat_br, p); });
+    const poslednjiObrazac6 = new Map();
+    (obrasci.data || []).forEach((o) => { if (!poslednjiObrazac6.has(o.mat_br)) poslednjiObrazac6.set(o.mat_br, o); });
+
+    const imePo = new Map(kadrovskaCache.map((k) => [k.mat_br, k.prezime_ime]));
+    const zaposleni = matBrovi
+      .map((m) => ({ matBr: m, ime: imePo.get(m) || m }))
+      .sort((a, b) => a.ime.localeCompare(b.ime, 'sr'));
+
+    const zaPreuzimanje = [];
+    const redoviTela = [];
+    const nedostaje = [];
+
+    zaposleni.forEach(({ matBr, ime }) => {
+      const pr = poslednjiPregled.get(matBr);
+      const o6 = poslednjiObrazac6.get(matBr);
+      const stavke = [];
+      if (pr) {
+        const ext = (pr.izvestaj_storage_path.split('.').pop() || 'pdf').toLowerCase();
+        zaPreuzimanje.push({
+          bucket: IZVESTAJ_BUCKET,
+          path: pr.izvestaj_storage_path,
+          naziv: `Lekarski_${bezbedanNazivFajla(ime)}_${pr.datum_pregleda}.${ext}`,
+        });
+        stavke.push(`lekarski pregled od ${formatDatumIso(pr.datum_pregleda)}${pr.vazi_do ? ` (važi do ${formatDatumIso(pr.vazi_do)})` : ''}`);
+      } else {
+        nedostaje.push(`${ime}: nema izveštaja o lekarskom pregledu na Supabase-u`);
+      }
+      if (o6) {
+        const ext = (o6.storage_path.split('.').pop() || 'pdf').toLowerCase();
+        zaPreuzimanje.push({
+          bucket: OBRAZAC6_BUCKET,
+          path: o6.storage_path,
+          naziv: `Obrazac6_${bezbedanNazivFajla(ime)}_${o6.datum_obuke}.${ext}`,
+        });
+        stavke.push(`Obrazac 6 od ${formatDatumIso(o6.datum_obuke)}`);
+      } else {
+        nedostaje.push(`${ime}: nema sačuvanog Obrasca 6`);
+      }
+      redoviTela.push(`- ${ime}: ${stavke.length ? stavke.join('; ') : 'nema dokumenata'}`);
+    });
+
+    if (zaPreuzimanje.length === 0) {
+      throw new Error('Za označene zaposlene nema nijednog dokumenta na Supabase-u.\n\n' + nedostaje.join('\n'));
+    }
+
+    const prilozi = [];
+    for (let i = 0; i < zaPreuzimanje.length; i++) {
+      const f = zaPreuzimanje[i];
+      btn.textContent = `Preuzimam ${i + 1}/${zaPreuzimanje.length}...`;
+      const { data: blob, error } = await supabaseClient.storage.from(f.bucket).download(f.path);
+      if (error || !blob) throw new Error(`Preuzimanje fajla ${f.naziv} nije uspelo: ` + (error ? error.message : 'nepoznata greška'));
+      prilozi.push({ naziv: f.naziv, contentType: contentTypeZaFajl(f.naziv, blob), base64: await blobUBase64(blob), velicina: blob.size });
+    }
+
+    const danas = formatDatumSrpski(new Date());
+    const body = [
+      'Poštovani,',
+      '',
+      'u prilogu su izveštaji o lekarskim pregledima i Obrasci 6 (evidencija o obučenosti za BZR i LZO) za sledeće zaposlene:',
+      '',
+      ...redoviTela,
+      '',
+      'Srdačan pozdrav',
+    ].join('\n');
+
+    const eml = napraviEml({
+      subject: `BZR dokumenta — lekarski pregledi i Obrasci 6 (${danas})`,
+      body,
+      prilozi,
+    });
+    triggerDownload(new Blob([eml], { type: 'message/rfc822' }), `BZR_dokumenta_${new Date().toISOString().slice(0, 10)}.eml`);
+
+    const ukupnoMb = prilozi.reduce((s, p) => s + p.velicina, 0) / (1024 * 1024);
+    const poruke = [
+      `Preuzet je nacrt emaila sa ${prilozi.length} priloga (${ukupnoMb.toFixed(1)} MB). Otvori ga iz foldera za preuzimanja (Downloads):`,
+      '• Outlook (Windows): otvara se kao nova poruka — upiši primaoca i pošalji.',
+      '• Apple Mail: otvara se kao primljena poruka — izaberi Poruka → Pošalji ponovo (⇧⌘D).',
+    ];
+    if (ukupnoMb > 20) poruke.push(`⚠ Ukupna veličina priloga je ${ukupnoMb.toFixed(1)} MB — mnogi mail serveri ne primaju poruke veće od ~20 MB. Razmisli da pošalješ u više delova.`);
+    if (nedostaje.length) poruke.push('', 'Nije ubačeno:', ...nedostaje.map((n) => '• ' + n));
+    kadrovskaEls.emailInfo.textContent = poruke.join('\n');
+    kadrovskaEls.emailInfo.classList.remove('hidden');
+  } catch (err) {
+    alert(err.message);
+  } finally {
+    btn.textContent = originalLabel;
+    osveziKadrovskaIzbor();
+  }
 });
 
 // Red iz kadrovske + red iz bzr.v_rizik_status, u obliku koji očekuje panel
@@ -860,6 +1076,10 @@ function prikaziRizikStatus(z) {
   // pregled i radi).
   els.obrazac6Section.classList.remove('hidden');
   els.obrazac6GenError.classList.add('hidden');
+  els.obrazac6UploadError.classList.add('hidden');
+  els.obrazac6UploadForm.reset();
+  resetObrazac6Picker();
+  loadObrasci6(z.mat_br);
   els.uputLekarskiSection.classList.toggle('hidden', !z.povecan_rizik);
   els.uputGenError.classList.add('hidden');
   els.uputSacuvajError.classList.add('hidden');
@@ -1000,6 +1220,147 @@ els.obrazac6GenerisiBtn.addEventListener('click', async () => {
   } finally {
     els.obrazac6GenerisiBtn.disabled = false;
     els.obrazac6GenerisiBtn.textContent = originalLabel;
+  }
+});
+
+// ---------- OBRAZAC 6 (čuvanje popunjenih obrazaca na Supabase Storage-u) ----------
+
+async function loadObrasci6(matBr) {
+  els.obrasci6List.innerHTML = '<p class="info-msg">Učitavanje...</p>';
+
+  const { data, error } = await supabaseClient
+    .schema('bzr')
+    .from('obrazac6_dokumenti')
+    .select('*')
+    .eq('mat_br', matBr)
+    .order('datum_obuke', { ascending: false });
+
+  // Korisnik je u međuvremenu možda otvorio drugog zaposlenog
+  if (!trenutniZaposleni || trenutniZaposleni.mat_br !== matBr) return;
+
+  if (error) {
+    els.obrasci6List.innerHTML = `<p class="error-msg">Greška: ${escapeHtml(error.message)}</p>`;
+    return;
+  }
+
+  if (!data || data.length === 0) {
+    els.obrasci6List.innerHTML = '<p class="info-msg">Nema sačuvanih Obrazaca 6.</p>';
+    return;
+  }
+
+  // Bucket je privatan — za pregled/preuzimanje generiši kratkotrajni signed URL
+  const signedUrls = {};
+  await Promise.all(data.map(async (d) => {
+    const { data: signed } = await supabaseClient
+      .storage
+      .from(OBRAZAC6_BUCKET)
+      .createSignedUrl(d.storage_path, IZVESTAJ_SIGNED_URL_TTL);
+    if (signed) signedUrls[d.id] = signed.signedUrl;
+  }));
+
+  els.obrasci6List.innerHTML = data.map((d) => `
+    <div class="pregled-item">
+      <div><strong>${formatDatumIso(d.datum_obuke)}</strong>${d.razlog_obuke ? ` — ${escapeHtml(d.razlog_obuke)}` : ''}</div>
+      <div class="pregled-links">
+        ${signedUrls[d.id]
+          ? `<a href="${signedUrls[d.id]}" target="_blank" rel="noopener">${escapeHtml(d.naziv_fajla || 'Obrazac br. 6')}</a>`
+          : `<span class="info-msg">Link trenutno nije dostupan, osveži stranicu</span>`}
+      </div>
+      <div class="pregled-actions">
+        <button type="button" class="danger-link btn-obrisi-obrazac6" data-id="${d.id}" data-path="${escapeAttr(d.storage_path)}">Obriši</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+els.obrasci6List.addEventListener('click', async (e) => {
+  const btn = e.target.closest('.btn-obrisi-obrazac6');
+  if (!btn) return;
+
+  if (!confirm('Da li sigurno želiš da obrišeš ovaj Obrazac 6? Fajl se trajno uklanja sa Supabase-a.')) {
+    return;
+  }
+
+  btn.disabled = true;
+
+  const { error } = await supabaseClient.schema('bzr').from('obrazac6_dokumenti').delete().eq('id', btn.dataset.id);
+  if (error) {
+    alert('Greška pri brisanju: ' + error.message);
+    btn.disabled = false;
+    return;
+  }
+
+  await supabaseClient.storage.from(OBRAZAC6_BUCKET).remove([btn.dataset.path]).catch(() => {});
+
+  if (trenutniZaposleni) await loadObrasci6(trenutniZaposleni.mat_br);
+  loadKadrovska(); // osveži semafor za Obrazac 6 u listi zaposlenih
+});
+
+els.obrazac6UploadForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  els.obrazac6UploadError.classList.add('hidden');
+
+  if (!trenutniZaposleni) return;
+
+  if (!trenutniObrazac6File) {
+    els.obrazac6UploadError.textContent = 'Izaberi fajl Obrasca 6.';
+    els.obrazac6UploadError.classList.remove('hidden');
+    return;
+  }
+
+  const submitBtn = els.obrazac6UploadForm.querySelector('button[type="submit"]');
+  const originalLabel = submitBtn.textContent;
+  submitBtn.disabled = true;
+
+  const matBr = trenutniZaposleni.mat_br;
+  let storagePath = null;
+
+  try {
+    // Prvo otpremi fajl — tek ako to uspe, upisujemo red u bazu (da ne ostane red bez
+    // fajla ili fajl bez reda).
+    submitBtn.textContent = 'Otpremanje...';
+    const ext = (trenutniObrazac6File.name.split('.').pop() || '').replace(/[^a-zA-Z0-9]/g, '');
+    storagePath = `${matBr}/${Date.now()}${ext ? '.' + ext : ''}`;
+
+    const { error: uploadError } = await supabaseClient
+      .storage
+      .from(OBRAZAC6_BUCKET)
+      .upload(storagePath, trenutniObrazac6File, {
+        contentType: trenutniObrazac6File.type || 'application/octet-stream',
+        upsert: false,
+      });
+
+    if (uploadError) {
+      storagePath = null;
+      throw new Error('Otpremanje Obrasca 6 na Supabase nije uspelo: ' + uploadError.message);
+    }
+
+    submitBtn.textContent = 'Čuvanje...';
+
+    const { error } = await supabaseClient.schema('bzr').from('obrazac6_dokumenti').insert({
+      mat_br: matBr,
+      datum_obuke: els.obrazac6DatumInput.value,
+      razlog_obuke: els.obrazac6RazlogInput.value.trim() || null,
+      storage_path: storagePath,
+      naziv_fajla: trenutniObrazac6File.name,
+    });
+
+    if (error) throw new Error('Greška pri čuvanju: ' + error.message);
+
+    els.obrazac6DatumInput.value = '';
+    resetObrazac6Picker();
+    await loadObrasci6(matBr);
+    loadKadrovska(); // osveži semafor za Obrazac 6 u listi zaposlenih
+  } catch (err) {
+    // Ako je fajl otpremljen ali upis reda nije uspeo, ukloni ga da ne ostane siroče na Storage-u.
+    if (storagePath) {
+      await supabaseClient.storage.from(OBRAZAC6_BUCKET).remove([storagePath]).catch(() => {});
+    }
+    els.obrazac6UploadError.textContent = err.message;
+    els.obrazac6UploadError.classList.remove('hidden');
+  } finally {
+    submitBtn.disabled = false;
+    submitBtn.textContent = originalLabel;
   }
 });
 
@@ -1231,7 +1592,7 @@ async function loadPregledi(matBr) {
         ` : ''}
         ${(!p.izvestaj_storage_path && !p.izvestaj_url && p.izvestaj_arhiviran) ? `<span class="badge">Izveštaj arhiviran lokalno</span>` : ''}
         ${p.obrazac6_url ? `
-          <a href="${p.obrazac6_url}" target="_blank" rel="noopener">Obrazac br. 6</a>
+          <a href="${p.obrazac6_url}" target="_blank" rel="noopener">Obrazac br. 6 (stari lokalni fajl)</a>
           <button type="button" class="link-btn btn-copy-path" data-path="${escapeAttr(fileUrlToWindowsPath(p.obrazac6_url))}">Kopiraj putanju</button>
         ` : ''}
       </div>
@@ -1414,7 +1775,6 @@ els.noviPregledForm.addEventListener('submit', async (e) => {
       vazi_do: document.getElementById('vazi-do').value || null,
       napomena: document.getElementById('napomena').value || null,
       izvestaj_storage_path: izvestajStoragePath,
-      obrazac6_url: trenutniObrazac6Url || null,
     };
 
     const { error } = await supabaseClient.schema('bzr').from('lekarski_pregledi').insert(payload);
@@ -1424,8 +1784,6 @@ els.noviPregledForm.addEventListener('submit', async (e) => {
     }
 
     els.noviPregledForm.reset();
-    // form.reset() briše i folder polje za obrazac 6 (deo je iste forme) — vraćamo ga iz memorisane vrednosti
-    els.folderObrazac6.value = localStorage.getItem('bzr_folder_obrazac6') || '';
     resetFilePickers();
 
     // Novi pregled može da promeni status rizika (npr. datum isteka) — osveži listu
