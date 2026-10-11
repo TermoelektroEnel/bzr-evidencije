@@ -44,23 +44,28 @@
       <div class="panel-header-row">
         <h2>Kadrovska evidencija</h2>
         <div>
+          <button type="button" class="secondary" id="kadrovska-email-btn" disabled>Pošalji email (0)</button>
           <button type="button" class="secondary" id="kadrovska-obrazac1-btn">Generiši Obrazac 1 (.docx)</button>
         </div>
       </div>
+      <div class="info-msg hidden" id="kadrovska-email-info"></div>
 
       <div style="overflow-x: auto;">
         <table id="kadrovska-table">
           <thead>
             <tr>
+              <th class="col-check"><input type="checkbox" id="kadrovska-check-all" title="Označi sve prikazane" /></th>
               <th>Mat. br.</th>
               <th>Ime i prezime</th>
               <th>Radno mesto</th>
               <th>Radna jedinica</th>
               <th>Rizik</th>
-              <th>Semafor</th>
+              <th>Semafor — lekarski</th>
+              <th>Semafor — Obrazac 6</th>
               <th>Status</th>
             </tr>
             <tr class="filter-row">
+              <th class="col-check"></th>
               <th><input type="text" id="kadrovska-filter-matbr" placeholder="filter..." /></th>
               <th><input type="text" id="kadrovska-filter-ime" placeholder="filter..." /></th>
               <th><input type="text" id="kadrovska-filter-radno-mesto" placeholder="filter..." /></th>
@@ -79,6 +84,14 @@
                   <option value="orange">narandžasti (ističe uskoro)</option>
                   <option value="green">zeleni (važi)</option>
                   <option value="none">bez semafora (nije povećan rizik)</option>
+                </select>
+              </th>
+              <th>
+                <select id="kadrovska-filter-obrazac6">
+                  <option value="">svi</option>
+                  <option value="red">crveni (isteklo / nema Obrazac 6)</option>
+                  <option value="orange">narandžasti (ističe uskoro)</option>
+                  <option value="green">zeleni (važi)</option>
                 </select>
               </th>
               <th>
@@ -123,6 +136,23 @@
         <button type="button" class="secondary" id="obrazac6-generisi-btn">Generiši Obrazac 6 (.docx)</button>
         <div class="error-msg hidden" id="obrazac6-gen-error"></div>
         <p class="info-msg">Opis posla, opasnosti, mere i LZO se automatski popunjavaju iz kataloga radnih mesta sa povećanim rizikom (tabela radna_mesta_rizik). Ako za ovo radno mesto još nisu popunjeni, javiće grešku.</p>
+
+        <h4>Sačuvani Obrasci 6</h4>
+        <div id="obrasci6-list"></div>
+
+        <form id="obrazac6-upload-form">
+          <label for="obrazac6-datum-input">Datum obuke</label>
+          <input type="date" id="obrazac6-datum-input" required />
+          <label>Popunjen/potpisan Obrazac 6 — čuva se bezbedno na Supabase-u</label>
+          <div class="file-picker-row">
+            <button type="button" class="secondary" id="obrazac6-browse-btn">Izaberi fajl...</button>
+            <input type="file" id="obrazac6-file" accept=".pdf,.doc,.docx" class="hidden" />
+            <span class="info-msg" id="obrazac6-filename">Nije izabran fajl</span>
+          </div>
+          <p class="info-msg">Razlog obuke se uzima iz polja "Slučaj, odnosno razlog obuke" iznad.</p>
+          <button type="submit" class="primary">Sačuvaj Obrazac 6</button>
+          <div class="error-msg hidden" id="obrazac6-upload-error"></div>
+        </form>
       </div>
 
       <div id="uput-lekarski-section" class="hidden">
@@ -193,18 +223,6 @@
           <span class="info-msg" id="izvestaj-filename">Nije izabran fajl</span>
         </div>
         <p class="info-msg">Fajl se otprema na Supabase tek kada klikneš "Sačuvaj pregled" ispod. Kad izveštaju istekne rok ("važi do"), na listi pregleda će se pojaviti podsetnik da ga preuzmeš na disk i arhiviraš.</p>
-
-        <label for="folder-obrazac6">Folder sa Obrascem br. 6 (podesi jednom)</label>
-        <input type="text" id="folder-obrazac6" placeholder="npr. C:\BZR\obrazac6" />
-        <label>Obrazac br. 6</label>
-        <div class="file-picker-row">
-          <button type="button" class="secondary" id="obrazac6-browse-btn">Izaberi fajl...</button>
-          <input type="file" id="obrazac6-file" class="hidden" />
-          <span class="info-msg" id="obrazac6-filename">Nije izabran fajl</span>
-          <a href="#" id="obrazac6-test-link" class="hidden" target="_blank" rel="noopener">Otvori</a>
-          <button type="button" class="secondary hidden" id="obrazac6-copy-btn">Kopiraj putanju</button>
-        </div>
-        <p class="info-msg">Napomena (Obrazac br. 6): iz bezbednosnih razloga browser ponekad neće sam da otvori fajl sa diska. Ako klik na "Otvori" ne uradi ništa, klikni "Kopiraj putanju" i nalepi (Ctrl+V) u Windows Explorer ili u prozor "Run" (Win+R).</p>
 
         <button type="submit" class="primary">Sačuvaj pregled</button>
         <div class="error-msg hidden" id="pregled-error"></div>

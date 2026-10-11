@@ -339,3 +339,8 @@ button.link-btn:hover { color: var(--primary-dark); }
   body { background: #fff; }
   .panel { border: none; padding: 0; }
 }
+
+/* Kolona sa čekboksovima u listi zaposlenih (izbor za slanje emaila) */
+th.col-check, td.col-check { width: 28px; text-align: center; cursor: default; }
+td.col-check input, th.col-check input { cursor: pointer; }
+#kadrovska-email-info { margin: 0 0 8px; white-space: pre-line; }
