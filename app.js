@@ -563,7 +563,7 @@ function applyKadrovskaFilter() {
       <tr class="row-clickable" data-mat-br="${escapeAttr(r.mat_br)}">
         <td class="col-check"><input type="checkbox" class="kadrovska-check" data-mat-br="${escapeAttr(r.mat_br)}"${kadrovskaIzabrani.has(r.mat_br) ? ' checked' : ''} /></td>
         <td>${escapeHtml(r.mat_br)}</td>
-        <td>${dotHtml}${escapeHtml(r.prezime_ime)}</td>
+        <td class="col-ime">${dotHtml}${escapeHtml(r.prezime_ime)}</td>
         <td>${escapeHtml(r.radno_mesto)}</td>
         <td>${escapeHtml(r.radna_jedinica)}</td>
         <td>${rizikCell}</td>

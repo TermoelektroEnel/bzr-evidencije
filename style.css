@@ -35,6 +35,38 @@ header.app-header h1 {
   font-weight: 600;
 }
 
+/* Logotip + naziv aplikacije u zaglavlju. Logotip je plav na beloj podlozi (JPG),
+   zato u osnovnom (tamnom) zaglavlju stoji na beloj pločici. */
+.brand { display: flex; align-items: center; gap: 16px; min-width: 0; }
+.brand-logo {
+  height: 34px;
+  width: auto;
+  max-width: 46vw;
+  background: #fff;
+  padding: 6px 10px;
+  border-radius: 6px;
+  display: block;
+}
+.brand-text { display: flex; flex-direction: column; min-width: 0; }
+.brand-sub { font-size: 12px; opacity: 0.75; }
+
+.panel-header-row { flex-wrap: wrap; }
+
+/* Uski ekrani (telefon): pravila su namerno jače specifičnosti (html body ...) da bi
+   važila i preko izgleda "BZR signalna" na kraju fajla. */
+@media (max-width: 640px) {
+  html body header.app-header { padding: 10px 16px; gap: 10px; }
+  html body .brand { gap: 10px; }
+  html body .brand-logo { height: 22px; max-width: 52vw; }
+  html body .brand-text { display: none; }
+  html body header.app-header button { padding: 5px 10px; font-size: 12px; flex-shrink: 0; }
+  html body .portal-nav { padding-left: 8px; padding-right: 8px; overflow-x: auto; flex-wrap: nowrap; }
+  html body .portal-nav .nav-tab { white-space: nowrap; padding-left: 12px; padding-right: 12px; font-size: 14px; }
+  html body main { margin-top: 16px; padding: 0 12px; }
+  html body .panel { padding: 16px; }
+  html body .panel h2 { font-size: 21px; }
+}
+
 header.app-header button {
   background: transparent;
   border: 1px solid rgba(255,255,255,0.4);
@@ -122,6 +154,12 @@ input, select, textarea {
 
 textarea { resize: vertical; min-height: 60px; }
 
+/* Dugmad po defaultu ne nasleđuju font stranice */
+button { font-family: inherit; }
+
+/* Dugme odmah ispod polja (npr. "Generiši Obrazac 6") da ne bude zalepljeno za njega */
+input + button.secondary, select + button.secondary { margin-top: 10px; }
+
 button.primary {
   background: var(--primary);
   color: #fff;
@@ -197,6 +235,7 @@ tr.row-clickable:hover { background: #f0f4f8; }
   padding: 2px 8px;
   border-radius: 999px;
   font-size: 12px;
+  white-space: nowrap;
   background: #eef2f6;
   color: var(--muted);
 }
@@ -219,6 +258,18 @@ tr.row-clickable:hover { background: #f0f4f8; }
 .rizik-dot-red { background: #c0392b; }
 .rizik-dot-orange { background: #e08e0b; }
 .rizik-dot-green { background: #2e9e44; }
+
+/* Kolona "Ime i prezime": tačka semafora stoji u svom (fiksnom) prostoru levo, tako da
+   imena budu poravnata bez obzira da li zaposleni ima semafor ili ne. */
+#kadrovska-table td.col-ime,
+#kadrovska-table thead tr:first-child th:nth-child(3) { position: relative; padding-left: 36px; }
+#kadrovska-table td.col-ime .rizik-dot {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  margin: 0;
+}
 
 /* Istaknuta kutija sa statusom radnog mesta po Aktu o proceni rizika */
 .rizik-po-aktu-box {
@@ -344,3 +395,97 @@ button.link-btn:hover { color: var(--primary-dark); }
 th.col-check, td.col-check { width: 28px; text-align: center; cursor: default; }
 td.col-check input, th.col-check input { cursor: pointer; }
 #kadrovska-email-info { margin: 0 0 8px; white-space: pre-line; }
+
+/* ==========================================================================
+   Izgled "BZR signalna": tamno zaglavlje, signalno žuta (boja upozorenja iz BZR
+   znakova) kao akcenat, "hazard" traka, krupni naslovi Barlow Condensed.
+   Namerno je na kraju fajla — dopunjuje/menja osnovna pravila iznad.
+   ========================================================================== */
+
+:root {
+  --bg: #F1F1EF;
+  --panel: #FFFFFF;
+  --border: #D6D6D2;
+  --text: #1A1C1E;
+  --muted: #5C6166;
+  --primary: #1A1C1E;
+  --primary-dark: #000000;
+  --signal: #F5B800;       /* BZR signalno žuta */
+  --signal-soft: #FFF4CC;
+  --danger: #C62828;
+  --ok: #2E7D32;
+  --radius: 4px;
+}
+
+body { font-family: 'Barlow', sans-serif; font-size: 16px; }
+main { max-width: 1380px; margin-top: 28px; }
+
+header.app-header { background: #1F2328; padding: 14px 28px; }
+/* Logotip veći, na beloj pločici — tako je najuočljiviji na tamnom zaglavlju */
+.brand-logo { height: 46px; padding: 8px 14px; border-radius: 6px; }
+header.app-header h1 {
+  font-family: 'Barlow Condensed', sans-serif; font-size: 26px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.04em; color: var(--signal);
+}
+.brand-sub { opacity: 0.8; font-size: 13px; }
+header.app-header button { border-color: rgba(255,255,255,0.35); font-weight: 600; }
+header.app-header button:hover { border-color: var(--signal); color: var(--signal); }
+
+/* "Hazard" traka ispod navigacije */
+.portal-nav {
+  background: #1F2328; padding: 0 28px 8px; border-top: 1px solid rgba(255,255,255,0.08);
+  position: relative;
+}
+.portal-nav::after {
+  content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 8px;
+  background: repeating-linear-gradient(-45deg, var(--signal) 0 14px, #1F2328 14px 28px);
+}
+.portal-nav .nav-tab {
+  font-family: 'Barlow Condensed', sans-serif; font-size: 18px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.05em; padding: 12px 18px; color: rgba(255,255,255,0.7);
+}
+.portal-nav .nav-tab.active { color: #1F2328; background: var(--signal); border-bottom-color: var(--signal); border-radius: 4px 4px 0 0; }
+
+.panel { border: none; border-top: 5px solid var(--signal); border-radius: var(--radius); padding: 26px; box-shadow: 0 2px 10px rgba(0,0,0,0.06); }
+h2, h3, h4 { font-family: 'Barlow Condensed', sans-serif; text-transform: uppercase; letter-spacing: 0.03em; }
+h2 { font-size: 30px; }
+h3 { font-size: 21px; margin-top: 30px; padding-left: 10px; border-left: 5px solid var(--signal); }
+h4 { font-size: 17px; }
+
+label { font-size: 14px; font-weight: 600; color: var(--muted); }
+input, select, textarea { font-size: 16px; border: 1.5px solid var(--border); border-radius: var(--radius); }
+input:focus, select:focus, textarea:focus { outline: none; border-color: #1F2328; box-shadow: 0 0 0 3px rgba(245,184,0,0.45); }
+
+button.primary {
+  background: var(--signal); color: #1A1C1E; font-weight: 700; font-size: 15px;
+  text-transform: uppercase; letter-spacing: 0.04em; padding: 11px 22px; border-radius: var(--radius);
+}
+button.primary:hover { background: #FFCB2E; }
+button.secondary { background: #1F2328; color: #fff; border: none; font-weight: 600; font-size: 14px; border-radius: var(--radius); }
+button.secondary:hover:not(:disabled) { background: #000; color: var(--signal); }
+button:disabled { opacity: 0.45; cursor: default; }
+button.link-btn, .file-picker-row a, .pregled-item .pregled-links a, #detail-view .back-link { color: #0B5CAD; }
+
+table { font-size: 15px; }
+thead tr:first-child th {
+  background: #1F2328; color: #fff; font-family: 'Barlow Condensed', sans-serif;
+  font-size: 15px; letter-spacing: 0.05em; padding-top: 11px; padding-bottom: 11px;
+}
+tr.filter-row th { background: var(--signal-soft); }
+tr.row-clickable:hover { background: var(--signal-soft); }
+/* Ime i prezime uvek u jednom redu (tabela je zato malo šira) */
+#kadrovska-table tbody td:nth-child(3) { font-weight: 700; white-space: nowrap; }
+
+.badge { border-radius: var(--radius); font-weight: 600; }
+.badge-risk { background: #1F2328; color: var(--signal); }
+.rizik-dot { width: 14px; height: 14px; border: 2px solid #fff; box-shadow: 0 0 0 1px rgba(0,0,0,0.25); }
+.rizik-dot-red { background: #E02020; }
+.rizik-dot-orange { background: #FF8A00; }
+.rizik-dot-green { background: #22A045; }
+
+.rizik-po-aktu-box { font-size: 17px; border-width: 2px; }
+.pregled-item { border-left: 5px solid #1F2328; }
+.arhiviranje-podsetnik { background: var(--signal-soft); border: 2px solid var(--signal); color: #5A4200; font-weight: 600; }
+
+#login-view { margin-top: 90px; }
+#login-view button.primary { width: 100%; }
