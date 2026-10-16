@@ -160,6 +160,9 @@ button { font-family: inherit; }
 /* Dugme odmah ispod polja (npr. "Generiši Obrazac 6") da ne bude zalepljeno za njega */
 input + button.secondary, select + button.secondary { margin-top: 10px; }
 
+/* Više dugmadi jedno pored drugog (npr. Obrazac 6 kao .docx i kao PDF) */
+.dugmad-red { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+
 button.primary {
   background: var(--primary);
   color: #fff;
