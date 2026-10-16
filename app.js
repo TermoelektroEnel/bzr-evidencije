@@ -64,6 +64,7 @@ const els = {
   obrazac6Section: document.getElementById('obrazac6-section'),
   obrazac6RazlogInput: document.getElementById('obrazac6-razlog-input'),
   obrazac6GenerisiBtn: document.getElementById('obrazac6-generisi-btn'),
+  obrazac6PdfBtn: document.getElementById('obrazac6-pdf-btn'),
   obrazac6GenError: document.getElementById('obrazac6-gen-error'),
   uputLekarskiSection: document.getElementById('uput-lekarski-section'),
   uputImeOcevoPrezimeInput: document.getElementById('uput-ime-ocevo-prezime-input'),
@@ -1133,7 +1134,320 @@ els.rizikSaveBtn.addEventListener('click', async () => {
 
 // ---------- OBRAZAC 6 (generisanje .docx iz stvarnih podataka) ----------
 
-els.obrazac6GenerisiBtn.addEventListener('click', async () => {
+// Popunjava šablon Obrasca 6 podacima o trenutnom zaposlenom i vraća .docx kao Blob.
+// Isti dokument se koristi i za .docx i za PDF verziju.
+async function napraviObrazac6Docx(razlogObuke) {
+  const { data: rmRow, error: rmError } = await supabaseClient
+    .schema('bzr')
+    .from('radna_mesta_rizik')
+    .select('opis_posla, lzo_lista, opasnosti, mere')
+    .eq('sifra_radnog_mesta', trenutniZaposleni.sifra_radnog_mesta)
+    .eq('aktivan', true)
+    .maybeSingle();
+
+  if (rmError) throw new Error('Greška pri čitanju kataloga radnih mesta: ' + rmError.message);
+
+  if (!rmRow || !rmRow.opis_posla) {
+    throw new Error(
+      `Za radno mesto "${trenutniZaposleni.radno_mesto || ''}" još nisu popunjeni opis posla / LZO / ` +
+      'opasnosti / mere u katalogu (tabela radna_mesta_rizik). Dopuni ih pa pokušaj ponovo.'
+    );
+  }
+
+  // ?v=... — promeni pri izmeni šablona, da browser ne bi koristio staru verziju iz keša
+  const resp = await fetch('templates/obrazac6-template.docx?v=20261016');
+  if (!resp.ok) throw new Error('Ne mogu da učitam šablon Obrasca 6 (templates/obrazac6-template.docx).');
+  const templateBuf = await resp.arrayBuffer();
+
+  const zip = new window.PizZip(templateBuf);
+  const doc = new window.Docxtemplater(zip, { paragraphLoop: true, linebreaks: true });
+
+  const danas = formatDatumSrpski(new Date());
+
+  // Šablon Obrasca 6 je ceo na ćirilici — sav tekst koji ubacujemo (iz baze, kataloga
+  // radnih mesta i forme, gde se sve čuva na latinici) transliterujemo pre umetanja,
+  // da fajl ne bi ispao mešovit. Datumi (danas) su brojevi, ne treba ih transliterovati.
+  // radno_mesto ide kroz radnoMestoLatinicaUCirilicu jer neka radna mesta imaju oblik
+  // "Srpski naziv/ English translation" -- engleski deo iza kose crte treba da ostane
+  // na latinici.
+  doc.render({
+    ime_prezime: latinicaUCirilicu(trenutniZaposleni.prezime_ime || ''),
+    radno_mesto: radnoMestoLatinicaUCirilicu(trenutniZaposleni.radno_mesto || ''),
+    opis_posla: latinicaUCirilicu(rmRow.opis_posla || ''),
+    razlog_obuke: latinicaUCirilicu(razlogObuke),
+    datum_obuke_teor: danas,
+    datum_obuke_prakt: danas,
+    datum_provere_teor: danas,
+    datum_provere_prakt: danas,
+    lzo_lista: latinicaUCirilicu(rmRow.lzo_lista || ''),
+    datum_lzo: danas,
+    opasnosti: latinicaUCirilicu(rmRow.opasnosti || ''),
+    mere: latinicaUCirilicu(rmRow.mere || ''),
+    obavestenja: latinicaUCirilicu(
+      `Upoznat sa Aktom o proceni rizika za radno mesto ${trenutniZaposleni.radno_mesto || ''} ` +
+      'i internim uputstvima poslodavca o bezbednosti i zdravlju na radu.'
+    ),
+  });
+
+  return doc.getZip().generate({
+    type: 'blob',
+    mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  });
+}
+
+// PDF verzija: popunjeni .docx se prikaže u skrivenom delu stranice (docx-preview), svaka
+// strana se "fotografiše" (html2canvas) i složi u A4 PDF (jsPDF). Biblioteke su velike
+// (~700 KB), pa se učitavaju tek pri prvom kliku na PDF dugme, ne pri otvaranju aplikacije.
+// Tekst u PDF-u je slika (ne može da se označi/kopira) — za izmene služi .docx verzija.
+const PDF_BIBLIOTEKE = [
+  'https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js',
+  'https://cdn.jsdelivr.net/npm/docx-preview@0.3.2/dist/docx-preview.min.js',
+  'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js',
+  'https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js',
+];
+
+function ucitajSkriptu(src) {
+  return new Promise((resolve, reject) => {
+    if (document.querySelector(`script[data-src="${src}"]`)) return resolve();
+    const el = document.createElement('script');
+    el.src = src;
+    el.dataset.src = src;
+    el.onload = () => resolve();
+    el.onerror = () => { el.remove(); reject(new Error('Ne mogu da učitam biblioteku za PDF (' + src + '). Proveri internet vezu.')); };
+    document.head.appendChild(el);
+  });
+}
+
+// Traži mesto za rez strane: idući naviše od najniže moguće tačke, prvi red piksela u kome
+// skoro nema tamnih tačaka (samo vertikalne linije tabele) — to je razmak između redova
+// teksta. Ako takav red ne postoji u donjih ~20% strane, seče na punoj visini.
+function nadjiRez(pikseli, sirina, pocetak, maxVisina) {
+  const dozvoljenoTamnih = Math.max(4, Math.round(sirina * 0.03));
+  const najmanje = Math.round(maxVisina * 0.8);
+  for (let h = maxVisina; h > najmanje; h--) {
+    const red = (pocetak + h) * sirina * 4;
+    let tamnih = 0;
+    for (let x = 0; x < sirina; x++) {
+      const i = red + x * 4;
+      if (pikseli[i] + pikseli[i + 1] + pikseli[i + 2] < 600) {
+        tamnih++;
+        if (tamnih > dozvoljenoTamnih) break;
+      }
+    }
+    if (tamnih <= dozvoljenoTamnih) return h;
+  }
+  return maxVisina;
+}
+
+// Slika iz prikaza dokumenta kao PNG data URL (čuva providnost — potpisi su providni PNG)
+function slikaUPng(img) {
+  const c = document.createElement('canvas');
+  c.width = img.naturalWidth;
+  c.height = img.naturalHeight;
+  c.getContext('2d').drawImage(img, 0, 0);
+  return c.toDataURL('image/png');
+}
+
+async function docxUPdf(docxBlob) {
+  for (const src of PDF_BIBLIOTEKE) await ucitajSkriptu(src);
+
+  // Dokument se prikazuje u zasebnom, praznom iframe-u (van ekrana), a ne direktno u
+  // stranici: inače bi stilovi aplikacije (razmaci u ćelijama tabela, font Barlow...)
+  // "procurili" u prikaz i redovi bi bili znatno viši nego u Word-u.
+  const okvir = document.createElement('iframe');
+  okvir.setAttribute('style', 'position:fixed;left:-20000px;top:0;width:1000px;height:1500px;border:0;');
+  document.body.appendChild(okvir);
+  const okvirDoc = okvir.contentDocument;
+  okvirDoc.open();
+  okvirDoc.write('<!doctype html><html><head><meta charset="utf-8"></head><body style="margin:0;background:#fff"></body></html>');
+  okvirDoc.close();
+  const host = okvirDoc.body;
+
+  try {
+    await window.docx.renderAsync(docxBlob, host, okvirDoc.head, {
+      inWrapper: false,
+      breakPages: true,
+      useBase64URL: true,
+      experimental: true,
+    });
+    // docx-preview pretvara poravnanje REDA tabele (Word: položaj tabele na strani) u
+    // centriranje teksta u svim ćelijama tog reda. Word to ne radi — ćelije bez sopstvenog
+    // poravnanja ostaju levo — pa to uklanjamo.
+    host.querySelectorAll('tr').forEach((tr) => { tr.style.textAlign = ''; });
+    // Prored kao u Word-u. Word "single" prored za Arial je ≈ 1,15 visine slova i računa ga
+    // samo po fontu teksta; browser bi visinu reda računao i po podrazumevanom fontu pasusa
+    // (12 pt iz šablona), pa bi svaki red bio viši nego u Word-u. Zato pasus dobija veličinu
+    // fonta svog teksta (prazni pasusi 10 pt, kao ostatak Obrasca 6). Uz zadat prored
+    // html2canvas i ne pomera tekst naniže (sa "normal" je poslednji red prelazio liniju).
+    const prored = okvirDoc.createElement('style');
+    // font-kerning: none — Word ne primenjuje kerning (osim ako je izričito uključen), pa
+    // bez ovoga Chrome slaže slova gušće i tekst se u ćelijama lomi na drugim mestima.
+    prored.textContent = 'section.docx p, section.docx span { line-height: 1.15 !important; font-kerning: none; }';
+    okvirDoc.head.appendChild(prored);
+    host.querySelectorAll('section.docx p').forEach((p) => {
+      const tekst = [...p.querySelectorAll('span')].filter((sp) => sp.textContent.trim());
+      const velicine = tekst
+        .map((sp) => parseFloat(okvirDoc.defaultView.getComputedStyle(sp).fontSize))
+        .filter((v) => v > 0);
+      p.style.fontSize = velicine.length ? Math.max(...velicine) + 'px' : '10pt';
+      // I font pasusa kao font teksta — inače se visina reda računa i po drugom fontu
+      // (drugačiji gornji/donji deo slova), pa je svaki red ~4% viši nego u Word-u.
+      p.style.fontFamily = tekst.length ? okvirDoc.defaultView.getComputedStyle(tekst[0]).fontFamily : 'Arial';
+    });
+    if (okvirDoc.fonts && okvirDoc.fonts.ready) await okvirDoc.fonts.ready;
+    // Tabulatore (npr. naziv/adresa/PIB poslodavca u zaglavlju) docx-preview izračuna tek
+    // ~0,5 s posle prikaza — sačekaj da svi dobiju širinu (najduže 2 s).
+    for (let t = 0; t < 2000; t += 100) {
+      const tabovi = [...host.querySelectorAll('.docx-tab-stop')];
+      if (tabovi.every((tab) => tab.getAttribute('style'))) break;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    // Sačekaj da se učitaju slike iz šablona (potpisi) — inače ih html2canvas ponekad
+    // "fotografiše" pre nego što su spremne i u PDF-u ih nema.
+    await Promise.all([...host.querySelectorAll('img')].map((img) => (
+      img.complete && img.naturalWidth
+        ? Promise.resolve()
+        : new Promise((resolve) => { img.onload = resolve; img.onerror = resolve; })
+    )));
+
+    const strane = [...host.querySelectorAll('section.docx')];
+    if (strane.length === 0) throw new Error('Prikaz dokumenta za PDF nije uspeo.');
+
+    const pdf = new window.jspdf.jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
+    const A4_SIRINA = 210;
+    const A4_VISINA = 297;
+    let prvaStrana = true;
+
+    for (const strana of strane) {
+      // Slike (potpisi) se iscrtavaju posebno, svaka cela na strani svog pasusa: u šablonu su
+      // pomerene naviše u odnosu na pasus za koji su vezane, pa bi pri prelomu strane njihov
+      // gornji deo ostao na prethodnoj strani.
+      const okvirZaSlike = strana.getBoundingClientRect();
+      const slike = [...strana.querySelectorAll('img')].map((img) => {
+        const b = img.getBoundingClientRect();
+        const sidro = img.closest('p') || img.parentElement;
+        return {
+          img,
+          x: b.left - okvirZaSlike.left,
+          y: b.top - okvirZaSlike.top,
+          w: b.width,
+          h: b.height,
+          sidroY: sidro.getBoundingClientRect().top - okvirZaSlike.top,
+        };
+      }).filter((sl) => sl.w > 0 && sl.h > 0);
+      slike.forEach((sl) => { sl.img.style.visibility = 'hidden'; });
+
+      const canvas = await window.html2canvas(strana, { scale: 2.5, backgroundColor: '#ffffff', useCORS: true });
+      const pikseli = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
+
+      // Mere strane u CSS pikselima prikaza (r = koliko canvas piksela ima jedan CSS piksel)
+      const okvirStrane = strana.getBoundingClientRect();
+      const r = canvas.width / okvirStrane.width;
+      const pxPoMm = okvirStrane.width / A4_SIRINA;
+      const visinaStrane = A4_VISINA * pxPoMm;
+      const stil = okvirDoc.defaultView.getComputedStyle(strana);
+      const marginaGore = parseFloat(stil.paddingTop) || 0;
+      const marginaDole = parseFloat(stil.paddingBottom) || 0;
+      // Kraj stvarnog sadržaja (ne visina strane — ona je najmanje cela A4 strana, pa bi
+      // zaokruživanje moglo da napravi praznu drugu stranu)
+      const krajSadrzaja = Math.max(
+        0,
+        ...[...strana.querySelectorAll(':scope > article > *, img')]
+          .map((el) => el.getBoundingClientRect().bottom - okvirStrane.top)
+      );
+
+      // Mesta gde sme da se prelomi strana: početak svakog reda tabele i svakog pasusa/tabele
+      // van tabele. Za početak reda koji nije prvi u tabeli pamtimo i levu/desnu ivicu
+      // tabele — tu se na dnu strane docrtava linija koja "zatvara" tabelu.
+      const prelomi = [];
+      strana.querySelectorAll('tr').forEach((tr) => {
+        const tabela = tr.closest('table');
+        const t = tabela.getBoundingClientRect();
+        const prviRed = tabela.rows[0] === tr;
+        prelomi.push({
+          y: tr.getBoundingClientRect().top - okvirStrane.top,
+          linija: prviRed ? null : { levo: t.left - okvirStrane.left, desno: t.right - okvirStrane.left },
+        });
+      });
+      strana.querySelectorAll(':scope > article > p, :scope > article > table').forEach((el) => {
+        prelomi.push({ y: el.getBoundingClientRect().top - okvirStrane.top, linija: null });
+      });
+      prelomi.sort((x, y) => x.y - y.y);
+
+      // Podela na strane (u CSS pikselima): prva strana od vrha (sa svojom gornjom
+      // marginom iz dokumenta), sledeće od mesta preloma, sa istom gornjom marginom.
+      const delovi = [];
+      let od = 0;
+      while (od < krajSadrzaja - 1) {
+        const prva = delovi.length === 0;
+        const granica = prva ? visinaStrane - marginaDole : od + visinaStrane - marginaGore - marginaDole;
+        if (krajSadrzaja <= granica) {
+          delovi.push({ od, do: krajSadrzaja, linija: null });
+          break;
+        }
+        const kandidat = prelomi.filter((pr) => pr.y > od + 20 && pr.y <= granica).pop();
+        if (kandidat) {
+          delovi.push({ od, do: kandidat.y, linija: kandidat.linija });
+          od = kandidat.y;
+        } else {
+          // Jedan red je sam veći od strane — seče se unutar njega, između redova teksta
+          const odPx = Math.round(od * r);
+          const visinaPx = nadjiRez(pikseli, canvas.width, odPx, Math.round((granica - od) * r));
+          delovi.push({ od, do: od + visinaPx / r, linija: null });
+          od += visinaPx / r;
+        }
+      }
+
+      delovi.forEach((deo, i) => {
+        const pomeraj = i === 0 ? 0 : marginaGore;
+        const odPx = Math.round(deo.od * r);
+        const visinaPx = Math.max(1, Math.min(Math.round((deo.do - deo.od) * r), canvas.height - odPx));
+
+        const isecak = document.createElement('canvas');
+        isecak.width = canvas.width;
+        isecak.height = Math.round(visinaStrane * r);
+        const ctx = isecak.getContext('2d');
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, isecak.width, isecak.height);
+        ctx.drawImage(canvas, 0, odPx, canvas.width, visinaPx, 0, Math.round(pomeraj * r), canvas.width, visinaPx);
+
+        if (!prvaStrana) pdf.addPage();
+        prvaStrana = false;
+        pdf.addImage(isecak.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, A4_SIRINA, A4_VISINA);
+
+        // Tabela prelazi na sledeću stranu: zatvori je linijom na dnu ove strane, a na
+        // sledećoj strani je otvori linijom na vrhu (ta linija ostaje u isečku prethodne strane)
+        pdf.setDrawColor(0);
+        pdf.setLineWidth(0.18); // ≈ 0,5 pt, kao linije u Obrascu
+        if (deo.linija) {
+          const y = (pomeraj + deo.do - deo.od) / pxPoMm;
+          pdf.line(deo.linija.levo / pxPoMm, y, deo.linija.desno / pxPoMm, y);
+        }
+        const prethodni = delovi[i - 1];
+        if (prethodni && prethodni.linija) {
+          const y = pomeraj / pxPoMm;
+          pdf.line(prethodni.linija.levo / pxPoMm, y, prethodni.linija.desno / pxPoMm, y);
+        }
+
+        // Slike čiji je pasus na ovoj strani
+        const poslednji = i === delovi.length - 1;
+        slike
+          .filter((sl) => sl.sidroY >= deo.od && (sl.sidroY < deo.do || poslednji))
+          .forEach((sl) => {
+            const y = Math.max(0, pomeraj + sl.y - deo.od);
+            pdf.addImage(slikaUPng(sl.img), 'PNG', sl.x / pxPoMm, y / pxPoMm, sl.w / pxPoMm, sl.h / pxPoMm);
+          });
+      });
+    }
+
+    return pdf.output('blob');
+  } finally {
+    okvir.remove();
+  }
+}
+
+// Zajedničko za oba dugmeta: provera, stanje dugmeta, poruka o grešci
+async function generisiObrazac6(btn, format) {
   if (!trenutniZaposleni) return;
   els.obrazac6GenError.classList.add('hidden');
 
@@ -1145,69 +1459,22 @@ els.obrazac6GenerisiBtn.addEventListener('click', async () => {
   }
 
   els.obrazac6GenerisiBtn.disabled = true;
-  const originalLabel = els.obrazac6GenerisiBtn.textContent;
-  els.obrazac6GenerisiBtn.textContent = 'Generišem...';
+  els.obrazac6PdfBtn.disabled = true;
+  const originalLabel = btn.textContent;
+  btn.textContent = 'Generišem...';
 
   try {
-    const { data: rmRow, error: rmError } = await supabaseClient
-      .schema('bzr')
-      .from('radna_mesta_rizik')
-      .select('opis_posla, lzo_lista, opasnosti, mere')
-      .eq('sifra_radnog_mesta', trenutniZaposleni.sifra_radnog_mesta)
-      .eq('aktivan', true)
-      .maybeSingle();
-
-    if (rmError) throw new Error('Greška pri čitanju kataloga radnih mesta: ' + rmError.message);
-
-    if (!rmRow || !rmRow.opis_posla) {
-      throw new Error(
-        `Za radno mesto "${trenutniZaposleni.radno_mesto || ''}" još nisu popunjeni opis posla / LZO / ` +
-        'opasnosti / mere u katalogu (tabela radna_mesta_rizik). Dopuni ih pa pokušaj ponovo.'
-      );
-    }
-
-    const resp = await fetch('templates/obrazac6-template.docx');
-    if (!resp.ok) throw new Error('Ne mogu da učitam šablon Obrasca 6 (templates/obrazac6-template.docx).');
-    const templateBuf = await resp.arrayBuffer();
-
-    const zip = new window.PizZip(templateBuf);
-    const doc = new window.Docxtemplater(zip, { paragraphLoop: true, linebreaks: true });
-
-    const danas = formatDatumSrpski(new Date());
-
-    // Šablon Obrasca 6 je ceo na ćirilici — sav tekst koji ubacujemo (iz baze, kataloga
-    // radnih mesta i forme, gde se sve čuva na latinici) transliterujemo pre umetanja,
-    // da fajl ne bi ispao mešovit. Datumi (danas) su brojevi, ne treba ih transliterovati.
-    // radno_mesto ide kroz radnoMestoLatinicaUCirilicu jer neka radna mesta imaju oblik
-    // "Srpski naziv/ English translation" -- engleski deo iza kose crte treba da ostane
-    // na latinici.
-    doc.render({
-      ime_prezime: latinicaUCirilicu(trenutniZaposleni.prezime_ime || ''),
-      radno_mesto: radnoMestoLatinicaUCirilicu(trenutniZaposleni.radno_mesto || ''),
-      opis_posla: latinicaUCirilicu(rmRow.opis_posla || ''),
-      razlog_obuke: latinicaUCirilicu(razlogObuke),
-      datum_obuke_teor: danas,
-      datum_obuke_prakt: danas,
-      datum_provere_teor: danas,
-      datum_provere_prakt: danas,
-      lzo_lista: latinicaUCirilicu(rmRow.lzo_lista || ''),
-      datum_lzo: danas,
-      opasnosti: latinicaUCirilicu(rmRow.opasnosti || ''),
-      mere: latinicaUCirilicu(rmRow.mere || ''),
-      obavestenja: latinicaUCirilicu(
-        `Upoznat sa Aktom o proceni rizika za radno mesto ${trenutniZaposleni.radno_mesto || ''} ` +
-        'i internim uputstvima poslodavca o bezbednosti i zdravlju na radu.'
-      ),
-    });
-
-    const blob = doc.getZip().generate({
-      type: 'blob',
-      mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    });
+    const docxBlob = await napraviObrazac6Docx(razlogObuke);
 
     const bezbedno = (trenutniZaposleni.prezime_ime || 'zaposleni').replace(/[^\p{L}\p{N}]+/gu, '_');
-    const nazivFajla = `Obrazac6_${bezbedno}_${new Date().toISOString().slice(0, 10)}.docx`;
-    triggerDownload(blob, nazivFajla);
+    const osnova = `Obrazac6_${bezbedno}_${new Date().toISOString().slice(0, 10)}`;
+
+    if (format === 'pdf') {
+      btn.textContent = 'Pravim PDF...';
+      triggerDownload(await docxUPdf(docxBlob), osnova + '.pdf');
+    } else {
+      triggerDownload(docxBlob, osnova + '.docx');
+    }
   } catch (err) {
     let msg = err && err.message ? err.message : String(err);
     if (err && err.properties && Array.isArray(err.properties.errors) && err.properties.errors.length) {
@@ -1219,9 +1486,13 @@ els.obrazac6GenerisiBtn.addEventListener('click', async () => {
     els.obrazac6GenError.classList.remove('hidden');
   } finally {
     els.obrazac6GenerisiBtn.disabled = false;
-    els.obrazac6GenerisiBtn.textContent = originalLabel;
+    els.obrazac6PdfBtn.disabled = false;
+    btn.textContent = originalLabel;
   }
-});
+}
+
+els.obrazac6GenerisiBtn.addEventListener('click', () => generisiObrazac6(els.obrazac6GenerisiBtn, 'docx'));
+els.obrazac6PdfBtn.addEventListener('click', () => generisiObrazac6(els.obrazac6PdfBtn, 'pdf'));
 
 // ---------- OBRAZAC 6 (čuvanje popunjenih obrazaca na Supabase Storage-u) ----------
 
