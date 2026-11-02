@@ -436,6 +436,8 @@ let kadrovskaCache = [];
 let rizikPoMatBr = new Map();
 // mat_br -> red iz bzr.v_obrazac6_status (Semafor za Obrazac 6, isto računat u bazi)
 let obrazac6PoMatBr = new Map();
+// mat_br -> poslednji lekarski pregled ({ datum_pregleda, rezultat }), za oznaku "nesposoban"
+let poslednjiPregledPoMatBr = new Map();
 const kadrovskaEls = {
   tbody: document.getElementById('kadrovska-tbody'),
   info: document.getElementById('kadrovska-info'),
@@ -470,7 +472,7 @@ async function loadKadrovska() {
     return;
   }
 
-  const [kadrovska, rizik, obrazac6] = await Promise.all([
+  const [kadrovska, rizik, obrazac6, pregledi] = await Promise.all([
     kadrovskaClient
       .schema('evidencija')
       .from('v_radnici_kadrovska')
@@ -484,6 +486,11 @@ async function loadKadrovska() {
       .schema('bzr')
       .from('v_obrazac6_status')
       .select('mat_br, semafor, semafor_opis'),
+    supabaseClient
+      .schema('bzr')
+      .from('lekarski_pregledi')
+      .select('mat_br, datum_pregleda, rezultat')
+      .order('datum_pregleda', { ascending: false }),
   ]);
 
   if (kadrovska.error) {
@@ -500,8 +507,18 @@ async function loadKadrovska() {
     return;
   }
 
+  if (pregledi.error) {
+    kadrovskaEls.info.textContent = 'Greška pri učitavanju lekarskih pregleda: ' + pregledi.error.message;
+    return;
+  }
+
   rizikPoMatBr = new Map((rizik.data || []).map((r) => [r.mat_br, r]));
   obrazac6PoMatBr = new Map((obrazac6.data || []).map((r) => [r.mat_br, r]));
+  // Lista je sortirana od najnovijeg — prvi red po zaposlenom je poslednji pregled
+  poslednjiPregledPoMatBr = new Map();
+  (pregledi.data || []).forEach((p) => {
+    if (!poslednjiPregledPoMatBr.has(p.mat_br)) poslednjiPregledPoMatBr.set(p.mat_br, p);
+  });
   kadrovskaCache = kadrovska.data || [];
   if (kadrovskaCache.length === 0) {
     kadrovskaEls.info.textContent =
@@ -531,7 +548,10 @@ function applyKadrovskaFilter() {
     if (radnaJedinica && !(r.radna_jedinica || '').toLowerCase().includes(radnaJedinica)) return false;
     if (rizik === 'da' && !povecan) return false;
     if (rizik === 'ne' && povecan) return false;
-    if (semafor && ((rz && rz.semafor) || 'none') !== semafor) return false;
+    if (semafor === 'nesposoban') {
+      const pp = poslednjiPregledPoMatBr.get(r.mat_br);
+      if (!pp || pp.rezultat !== 'nesposoban') return false;
+    } else if (semafor && ((rz && rz.semafor) || 'none') !== semafor) return false;
     if (semaforObrazac6) {
       const o6 = obrazac6PoMatBr.get(r.mat_br);
       if (!o6 || o6.semafor !== semaforObrazac6) return false;
@@ -560,11 +580,18 @@ function applyKadrovskaFilter() {
       const obrazac6Cell = o6
         ? `<span class="rizik-dot rizik-dot-${o6.semafor}" title="${escapeAttr(o6.semafor_opis)}"></span>${escapeHtml(o6.semafor_opis)}`
         : '<span class="info-msg">nema u BZR</span>';
+      // Poslednji lekarski pregled sa rezultatom "nesposoban" — upadljiva oznaka uz ime,
+      // bez obzira na rizik i rok važenja
+      const pp = poslednjiPregledPoMatBr.get(r.mat_br);
+      const nesposoban = !!pp && pp.rezultat === 'nesposoban';
+      const nesposobanHtml = nesposoban
+        ? ` <span class="badge badge-nesposoban" title="Lekarski pregled ${escapeAttr(formatDatumIso(pp.datum_pregleda))}: nesposoban">NESPOSOBAN ${escapeHtml(formatDatumIso(pp.datum_pregleda))}</span>`
+        : '';
       return `
-      <tr class="row-clickable" data-mat-br="${escapeAttr(r.mat_br)}">
+      <tr class="row-clickable${nesposoban ? ' row-nesposoban' : ''}" data-mat-br="${escapeAttr(r.mat_br)}">
         <td class="col-check"><input type="checkbox" class="kadrovska-check" data-mat-br="${escapeAttr(r.mat_br)}"${kadrovskaIzabrani.has(r.mat_br) ? ' checked' : ''} /></td>
         <td>${escapeHtml(r.mat_br)}</td>
-        <td class="col-ime">${dotHtml}${escapeHtml(r.prezime_ime)}</td>
+        <td class="col-ime">${dotHtml}${escapeHtml(r.prezime_ime)}${nesposobanHtml}</td>
         <td>${escapeHtml(r.radno_mesto)}</td>
         <td>${escapeHtml(r.radna_jedinica)}</td>
         <td>${rizikCell}</td>
@@ -1986,6 +2013,7 @@ els.pregrediList.addEventListener('click', async (e) => {
   if (trenutniZaposleni) {
     await loadPregledi(trenutniZaposleni.mat_br);
   }
+  loadKadrovska(); // osveži oznaku "nesposoban" i semafor u listi zaposlenih
 });
 
 // Automatski postavi "Važi do" na datum pregleda + 1 godina (periodicitet od 12 meseci)

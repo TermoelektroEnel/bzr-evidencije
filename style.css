@@ -481,6 +481,10 @@ tr.row-clickable:hover { background: var(--signal-soft); }
 
 .badge { border-radius: var(--radius); font-weight: 600; }
 .badge-risk { background: #1F2328; color: var(--signal); }
+/* Poslednji lekarski pregled: nesposoban — mora da se vidi na prvi pogled */
+.badge-nesposoban { background: var(--danger); color: #fff; margin-left: 8px; letter-spacing: 0.03em; }
+tr.row-nesposoban { background: #FDECEA; }
+tr.row-nesposoban:hover { background: #F9D6D2; }
 .rizik-dot { width: 14px; height: 14px; border: 2px solid #fff; box-shadow: 0 0 0 1px rgba(0,0,0,0.25); }
 .rizik-dot-red { background: #E02020; }
 .rizik-dot-orange { background: #FF8A00; }
