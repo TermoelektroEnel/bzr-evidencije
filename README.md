@@ -23,6 +23,8 @@ Korisnike (login/lozinka) dodaješ ručno u Supabase dashboardu: **Authenticatio
 
 Za Rizik i Semafor u listi zaposlenih potreban je pogled `bzr.v_rizik_status` — pravi ga `rizik_status_migracija.sql` (već pokrenuto 10.10.2026; skripta samo dodaje novi pogled i ne menja ništa postojeće). Pravila: ručni izuzetak (`rizik_override`) → katalog radnih mesta po šifri → nije povećan rizik; semafor je crven ako nema pregleda ili je istekao, narandžast ako ističe za 15 dana ili manje, zelen inače ("danas" po beogradskom vremenu).
 
+Semafor je crven i kad je na **poslednjem** lekarskom pregledu rezultat "nesposoban" ("Nesposoban na pregledu ..."), za sve zaposlene, i bez povećanog rizika. To dodaje `lekarski_nesposoban_semafor_migracija.sql` (pokreće se jednom u SQL editoru; prekida se bez izmena ako pogled nije onakav kakav ga je napravila prethodna skripta). U listi zaposlenih takvi imaju i crvenu oznaku NESPOSOBAN uz ime, a filter "Semafor — lekarski" ima stavku "nesposoban na poslednjem pregledu".
+
 Da bi dugme "Generiši Obrazac 6" radilo za neko radno mesto, u `bzr.radna_mesta_rizik` moraju biti popunjene kolone `opis_posla`, `lzo_lista`, `opasnosti`, `mere` za to radno mesto (šifru).
 
 Obrazac 1 se generiše iz podataka koje aplikacija već ima (zaposleni iz kadrovske evidencije sa povećanim rizikom prema `v_rizik_status` + njihova istorija lekarskih pregleda) — nema dodatnih preduslova.
