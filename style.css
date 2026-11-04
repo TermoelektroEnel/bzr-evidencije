@@ -496,3 +496,76 @@ tr.row-nesposoban:hover { background: #F9D6D2; }
 
 #login-view { margin-top: 90px; }
 #login-view button.primary { width: 100%; }
+
+/* ==========================================================================
+   Tamni izgled (Predlog B "Tamno plava + signal"): tamnoplava osnova, signalno
+   žuta ostaje akcenat. Uključuje se atributom data-tema="tamna" na <html>
+   (tema.js; prekidač ☀/🌙 u zaglavlju, podrazumevano tamno). Sve je u
+   @media screen — štampa ostaje svetla.
+   ========================================================================== */
+.header-dugmad { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+header.app-header button.tema-btn { font-size: 16px; line-height: 1; padding: 6px 10px; }
+
+@media screen {
+  html[data-tema="tamna"] {
+    color-scheme: dark;
+    --d-bg:#0D1520; --d-panel:#142131; --d-stavka:#18283B; --d-input:#0F1A27; --d-border:#263A52;
+    --d-text:#DCE6F1; --d-muted:#93A6BC; --d-naslov:#EEF3F9;
+    --d-head:#08111C; --d-thead:#1A2B40; --d-filter:#172638; --d-hover:#1E3249; --d-badge:#1E3249; --d-sec:#1A2B40;
+    --d-link:#7DB5F0; --d-akcent-ivica:#4F8FD6;
+    --signal:#F5B800; --d-signal-tint:rgba(245,184,0,.13); --d-fokus:rgba(245,184,0,.35);
+    --border:#263A52; --text:#DCE6F1; --muted:#93A6BC; --panel:#142131; --bg:#0D1520;
+  }
+  html[data-tema="tamna"] body { background: var(--d-bg); color: var(--d-text); }
+
+  /* zaglavlje i navigacija */
+  html[data-tema="tamna"] body header.app-header, html[data-tema="tamna"] body .portal-nav { background: var(--d-head); }
+  html[data-tema="tamna"] body .portal-nav::after { background: repeating-linear-gradient(-45deg, var(--signal) 0 14px, var(--d-head) 14px 28px); }
+  html[data-tema="tamna"] body .portal-nav .nav-tab.active { color: var(--d-head); background: var(--signal); }
+
+  /* paneli */
+  html[data-tema="tamna"] body .panel { background: var(--d-panel); border-top-color: var(--signal); box-shadow: 0 2px 14px rgba(0,0,0,.35); }
+  html[data-tema="tamna"] body h2, html[data-tema="tamna"] body h3, html[data-tema="tamna"] body h4 { color: var(--d-naslov); }
+  html[data-tema="tamna"] body h3 { border-left-color: var(--signal); }
+  html[data-tema="tamna"] body label, html[data-tema="tamna"] body .info-msg { color: var(--d-muted); }
+
+  /* polja */
+  html[data-tema="tamna"] body input, html[data-tema="tamna"] body select, html[data-tema="tamna"] body textarea { background: var(--d-input); color: var(--d-text); border-color: var(--d-border); }
+  html[data-tema="tamna"] body input::placeholder, html[data-tema="tamna"] body textarea::placeholder { color: var(--d-muted); opacity: .8; }
+  html[data-tema="tamna"] body input:focus, html[data-tema="tamna"] body select:focus, html[data-tema="tamna"] body textarea:focus { border-color: var(--signal); box-shadow: 0 0 0 3px var(--d-fokus); }
+  html[data-tema="tamna"] body select option { background: var(--d-input); color: var(--d-text); }
+  html[data-tema="tamna"] body input[type=checkbox], html[data-tema="tamna"] body input[type=radio] { accent-color: var(--signal); }
+
+  /* dugmad i linkovi */
+  html[data-tema="tamna"] body button.secondary { background: var(--d-sec); color: var(--d-text); border: 1px solid var(--d-border); }
+  html[data-tema="tamna"] body button.secondary:hover:not(:disabled) { background: var(--d-head); color: var(--signal); border-color: var(--signal); }
+  html[data-tema="tamna"] body button.link-btn, html[data-tema="tamna"] body .file-picker-row a,
+  html[data-tema="tamna"] body .pregled-item .pregled-links a, html[data-tema="tamna"] body #detail-view .back-link,
+  html[data-tema="tamna"] body main a { color: var(--d-link); }
+
+  /* tabele */
+  html[data-tema="tamna"] body th, html[data-tema="tamna"] body td { border-bottom-color: var(--d-border); }
+  html[data-tema="tamna"] body thead tr:first-child th { background: var(--d-thead); color: var(--d-text); }
+  html[data-tema="tamna"] body tr.filter-row th { background: var(--d-filter); border-bottom-color: var(--d-border); }
+  html[data-tema="tamna"] body tr.row-clickable:hover { background: var(--d-hover); }
+  html[data-tema="tamna"] body tr.row-nesposoban { background: rgba(239,83,80,.16); }
+  html[data-tema="tamna"] body tr.row-nesposoban:hover { background: rgba(239,83,80,.24); }
+
+  /* oznake i statusi */
+  html[data-tema="tamna"] body .badge { background: var(--d-badge); color: var(--d-muted); }
+  html[data-tema="tamna"] body .badge-risk { background: var(--d-signal-tint); color: var(--signal); border: 1px solid var(--signal); }
+  html[data-tema="tamna"] body .badge-nesposoban { background: #D32F2F; color: #fff; }
+  html[data-tema="tamna"] body .rizik-dot { border-color: var(--d-panel); box-shadow: 0 0 0 1px rgba(255,255,255,.25); }
+  html[data-tema="tamna"] body .rizik-po-aktu-box { border-color: var(--d-border); }
+  html[data-tema="tamna"] body .rizik-po-aktu-box.rizik-po-aktu-ne { background: rgba(76,175,80,.12); border-color: rgba(76,175,80,.45); color: #9FDBA8; }
+  html[data-tema="tamna"] body .rizik-po-aktu-box.rizik-po-aktu-da { background: rgba(239,83,80,.13); border-color: rgba(239,83,80,.5); color: #F4A39C; }
+  html[data-tema="tamna"] body .pregled-item { border-color: var(--d-border); border-left-color: var(--d-akcent-ivica); background: var(--d-stavka); }
+  html[data-tema="tamna"] body .pregled-item .rezultat-sposoban, html[data-tema="tamna"] body .tezina-laka { color: #6FCF7F; }
+  html[data-tema="tamna"] body .pregled-item .rezultat-nesposoban, html[data-tema="tamna"] body .tezina-smrtna, html[data-tema="tamna"] body .error-msg { color: #F2766B; }
+  html[data-tema="tamna"] body .pregled-item .rezultat-uslovno, html[data-tema="tamna"] body .tezina-teska { color: #F0A93B; }
+  html[data-tema="tamna"] body button.danger-link { color: #F2766B; }
+  html[data-tema="tamna"] body .arhiviranje-podsetnik { background: var(--d-signal-tint); border-color: var(--signal); color: var(--signal); }
+
+  /* forme za unos unutar panela (okvir im je zadat u HTML-u) */
+  html[data-tema="tamna"] body form[id$="-form"] { background: var(--d-stavka); }
+}
