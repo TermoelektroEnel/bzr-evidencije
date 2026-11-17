@@ -24,7 +24,8 @@ Korisnik mora da postoji u oba projekta sa istom lozinkom, a u prisustvu mora im
 - Logiku (rizik, semafor, statusi) računaj u bazi kroz poglede, a ne u browseru.
 - Zdravstveni podaci i dokumenti idu samo u **privatne** Storage bucket-e, sa signed URL-ovima.
 - Tok rada: nova grana → commit → push → PR. Korisnik spaja PR porukom tipa „spoji PR N“. Ne radi direktno na `main`.
-- Pre push-a korisnik proverava izmene lokalno: „pokreni aplikaciju lokalno“ znači pokreni preview `bzr-portal` iz `.claude/launch.json` (Python server na http://localhost:8000, bez keša).
+- Pre svakog posla `git pull`: radi se i na PC-u i na Mac-u (isti Claude nalog, ali istorija razgovora se ne prenosi između računara — zato su pravila ovde).
+- Pre push-a korisnik proverava izmene lokalno: „pokreni aplikaciju lokalno“ znači pokreni preview `bzr-portal` iz `.claude/launch.json` (Mac: Python server na http://localhost:8000, bez keša). Na PC-u: preview `bzr` iz `D:\Portal Enel\.claude\launch.json` (http://localhost:5180) ili `bzr-lokalno` iz `.claude\launch.json` repoa zahtev-za-nabavku (http://localhost:8090). Push tek kad korisnik kaže „Pushuj“; „Ugasi ga“ znači ugasi lokalni server.
 - Pri svakoj izmeni `app.js` ili `style.css` povećaj oznaku `?v=...` u `index.html`. Pri izmeni šablona Obrasca 6 povećaj `?v=` u adresi šablona u `app.js`. GitHub Pages kešira fajlove 10 minuta, pa bi inače browser učitao stari kod.
 - Posle izmene ažuriraj sekciju „Status“ u `README.md`.
 - Korisnik piše na srpskom (latinica). Odgovaraj na srpskom.
@@ -35,6 +36,8 @@ Korisnik mora da postoji u oba projekta sa istom lozinkom, a u prisustvu mora im
 2. Obrazac 6 se čuva na Supabase Storage-u (`obuka-obrazac6`), uveden je semafor za Obrazac 6 (važi 12 meseci) i `.eml` nacrti emailova sa prilozima (PR #2).
 3. Izgled „BZR signalna“ sa logom firme (PR #3).
 4. Obrazac 6 kao PDF, vizuelno usklađen sa Word verzijom, uključujući prelom tabele preko više strana (PR #4). Korisnik će javiti ako se kod nekog zaposlenog prelom opet pokvari.
+5. Oznaka i crven semafor kad je zaposleni na poslednjem lekarskom pregledu ocenjen kao „nije sposoban“ (PR #5, 2.11.).
+6. Tamni izgled (tamnoplava + signalno žuta) sa prekidačem ☀/🌙 (PR #6, 4.11.). Samo izgled, bez izmene funkcija.
 
 ## Otvoreno
 
